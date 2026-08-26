@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.3.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -784,6 +784,7 @@ let lastRoute = "";
 let editOpen = new Set();     // rozbalené editory sérií v aktuálním tréninku
 let warmOpen = null;          // ruční stav rozbalení rozcvičky
 let statsEx = null;           // vybraný cvik ve statistikách
+let modalEx = null;           // otevřený cvik v okně „jak na to“
 
 function parseHash() {
   const h = (location.hash || "#/").replace(/^#/, "");
@@ -806,6 +807,7 @@ function render() {
   if (!sameRoute) {
     if (route !== "workout") editOpen = new Set();
     if (route !== "workout") warmOpen = null;
+    modalEx = null;
   }
   lastRoute = path;
 
@@ -882,11 +884,37 @@ function render() {
   const warmDet = document.getElementById("warmdet");
   if (warmDet) warmDet.addEventListener("toggle", e => { warmOpen = e.target.open; });
 
+  const modal = document.getElementById("modal");
+  if (modal) modal.innerHTML = modalEx ? vModal(modalEx) : "";
+
   window.scrollTo(0, sameRoute ? scrollY : 0);
   renderTimer();
 }
 
 /* ---------------- pohledy ---------------- */
+
+function vModal(exId) {
+  const info = (PLAN.exerciseInfo || {})[exId] || {};
+  let name = exId;
+  for (const day of PLAN.days) {
+    const e = day.exercises.find(x => x.id === exId);
+    if (e) { name = e.name; break; }
+  }
+  const items = (info.howto || []).map(h => `<li>${esc(h)}</li>`).join("");
+  const search = "https://www.youtube.com/results?search_query=" +
+    encodeURIComponent(info.videoQuery || name + " tutorial");
+  return `<div class="modal-back" data-act="exinfo-close">
+    <div class="modal" data-act="noop">
+      <div class="row" style="margin-bottom:6px">
+        <h2 class="grow" style="margin:0;font-size:17.5px">${esc(name)}</h2>
+        <button class="mclose" data-act="exinfo-close" aria-label="Zavřít">✕</button>
+      </div>
+      ${items ? `<ul class="howto">${items}</ul>` : `<p class="hint">K tomuhle cviku zatím nemám popis.</p>`}
+      ${info.video ? `<a class="btn primary block" style="margin-top:14px" href="${esc(info.video)}" target="_blank" rel="noopener">▶ Video tutoriál</a>` : ""}
+      <a class="btn block" style="margin-top:8px" href="${esc(search)}" target="_blank" rel="noopener">🔎 Další videa na YouTube</a>
+    </div>
+  </div>`;
+}
 
 function activeBanner() {
   if (!store.activeId) return "";
@@ -995,6 +1023,7 @@ function vDay(day, week) {
       return `<div class="excard">
         <div class="exhead">
           <span class="exname">${esc(ex.name)}</span>
+          <button class="infobtn" data-act="exinfo" data-ex="${ex.id}" aria-label="Jak cvičit">?</button>
           ${ex.pause ? `<span class="badge">⏱ ${esc(ex.pause)}</span>` : ""}
           ${ex.block ? `<span class="badge">${esc(ex.block)}</span>` : ""}
         </div>
@@ -1083,6 +1112,7 @@ function vWorkout(sess) {
       return `<div class="excard">
         <div class="exhead">
           <span class="exname">${esc(ex.name)}</span>
+          <button class="infobtn" data-act="exinfo" data-ex="${ex.id}" aria-label="Jak cvičit">?</button>
           ${ex.pause ? `<span class="badge">⏱ ${esc(ex.pause)}</span>` : ""}
           ${ex.block ? `<span class="badge">${esc(ex.block)}</span>` : ""}
         </div>
@@ -1185,7 +1215,8 @@ function vGuided(sess) {
       </div>
     </div>
     <h2 class="g-ex">${isWork ? "" : "Připrav se: "}${esc(shown.name)}</h2>
-    <div class="g-set">Série ${shown.setIdx + 1} z ${shown.setTotal}${shown.note ? ` · ${esc(shown.note)}` : ""}</div>
+    <div class="g-set">Série ${shown.setIdx + 1} z ${shown.setTotal}${shown.note ? ` · ${esc(shown.note)}` : ""}
+      <button class="infobtn" data-act="exinfo" data-ex="${shown.exId}" aria-label="Jak cvičit">?</button></div>
     ${nextPill}
     <div class="g-controls">
       <button class="gbtn" data-act="g-back" title="Zpět o sérii">◀</button>
@@ -1493,6 +1524,19 @@ document.addEventListener("click", e => {
     case "cancel": cancelSession(d.sid); break;
     case "del": deleteSession(d.sid); break;
     case "timer-off": stopRest(); break;
+    case "noop": break;
+    case "exinfo": {
+      modalEx = d.ex;
+      // v řízeném tréninku čtení techniky automaticky pozastaví odpočet
+      if (guided && !guided.finished && !guided.paused &&
+          (location.hash || "").startsWith("#/guided")) {
+        guided.remainMs = Math.max(0, guided.endsAt - Date.now());
+        guided.paused = true;
+      }
+      render();
+      break;
+    }
+    case "exinfo-close": modalEx = null; render(); break;
     case "guided": startGuided(d.sid); break;
     case "g-next": ensureAudio(); advanceGuided(); break;
     case "g-back": ensureAudio(); backGuided(); break;

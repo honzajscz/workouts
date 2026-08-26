@@ -42,6 +42,134 @@ const PLAN = {
     { name: "Prkno na hrazdě", note: "10 s" }
   ],
 
+  /* Instrukce k technice a videa – klíčem je id cviku.
+     howto: krátké body, jak cvik správně provést
+     video: doporučený tutoriál na YouTube
+     videoQuery: dotaz pro hledání dalších videí */
+  exerciseInfo: {
+    "tgu": {
+      howto: [
+        "Lehni na záda, kettlebell vytlač na napnutou paži – rameno zamknuté v jamce, oči sledují činku.",
+        "Postupně: přetoč se na loket → na dlaň → zvedni pánev → protáhni nohu dozadu do kleku → postav se.",
+        "1 TGU = 4× press (výtlak nad hlavu) – např. dole, v sedu, v kleku a ve stoji.",
+        "Stejnou cestou kontrolovaně zpět dolů; celou dobu zpevněné břicho.",
+        "Střídej levou a pravou ruku, pracuj v klidovém tempu (blok 6 minut)."
+      ],
+      video: "https://www.youtube.com/watch?v=lpltjWHd0ek",
+      videoQuery: "kettlebell turkish get up tutorial"
+    },
+    "shyby": {
+      howto: [
+        "Hmat nadhmatem zhruba na šířku ramen, start z plného visu.",
+        "Nejdřív stáhni lopatky dolů a pak přitahuj – brada nad hrazdu.",
+        "Dolů kontrolovaně do plného natažení paží, bez kmitání.",
+        "Dopomoc: oranžový + tyrkysový expander zavěs přes hrazdu a stoupni si do něj."
+      ],
+      video: "https://www.youtube.com/watch?v=rmdn5X_KLkY",
+      videoQuery: "pull up proper form tutorial"
+    },
+    "pistole": {
+      howto: [
+        "Stoj na jedné noze zády k podložení, druhá noha natažená dopředu.",
+        "Sedej dozadu: „sit“ = úplně dosednout a vstát, „touch“ = jen dotyk a hned nahoru.",
+        "Koleno směřuje nad špičku, pata stojné nohy celou dobu na zemi.",
+        "Paže natažené vpřed jako protiváha; nahoru bez švihu a opření rukou."
+      ],
+      video: "https://www.youtube.com/watch?v=T74bU2vNWG4",
+      videoQuery: "pistol squat box progression tutorial"
+    },
+    "kliky-bradla": {
+      howto: [
+        "Ramena stáhni dolů od uší, lehký náklon trupu vpřed.",
+        "Spouštěj se, dokud nejsou ramena u úrovně loktů (ohyb ~90°).",
+        "Lokty vedou dozadu podél těla, ne do stran; nahoře paže propni.",
+        "Nejdi přes bolest v ramenou – radši menší rozsah a čistě."
+      ],
+      video: "https://www.youtube.com/watch?v=85u_8mz5lBA",
+      videoQuery: "parallel bar dips proper form"
+    },
+    "bulharske": {
+      howto: [
+        "Zadní nárt polož na lavici, přední noha zhruba krok před ní; v každé ruce kettlebell.",
+        "Klesej svisle dolů – koleno zadní nohy míří k zemi, přední koleno nad špičkou.",
+        "Váha na celém chodidle přední nohy, trup jen mírně nakloněný vpřed.",
+        "Zápis X+X = opakování na každou nohu."
+      ],
+      video: "https://www.youtube.com/watch?v=VPhhE6bBzZE",
+      videoQuery: "bulgarian split squat proper form"
+    },
+    "swing": {
+      howto: [
+        "Švih jde z kyčlí, ne z dřepu: náprah činky dozadu mezi stehna a prudké propnutí kyčlí.",
+        "Záda pořád rovná, paže volná – činka letí sama do výšky hrudníku.",
+        "Nahoře zpevni hýždě a břicho; dole hlídej rovná záda a činku vysoko v rozkroku.",
+        "5+5 = 5 švihů levou + 5 pravou v rámci jedné minuty, zbytek minuty odpočívej."
+      ],
+      video: "https://www.youtube.com/watch?v=BXrXhyudA80",
+      videoQuery: "one arm kettlebell swing hardstyle tutorial"
+    },
+    "pike": {
+      howto: [
+        "Nohy špičkami na lavici, pánev co nejvýš – tělo tvoří obrácené V, hlava mezi rameny.",
+        "Ohýbej lokty a spouštěj temeno hlavy k zemi mezi dlaně.",
+        "Lokty svírají s tělem ~45°, nevytáčej je do stran.",
+        "Pomalejší negativ = cestu dolů brzdit 3–4 sekundy."
+      ],
+      video: "https://www.youtube.com/watch?v=5IcgscNCId8",
+      videoQuery: "pike push up feet elevated tutorial"
+    },
+    "facepull": {
+      howto: [
+        "Kruhy zhruba ve výšce obličeje, zakloň se – tělo zpevněné v jedné linii jako prkno.",
+        "Přitahuj kruhy k obličeji: lokty vysoko a do stran, lopatky stáhni k sobě.",
+        "„Stopy“ = vzdálenost chodidel před tělem; menší číslo = tělo víc naležato = těžší.",
+        "Tahají zadní ramena a horní záda, ne biceps."
+      ],
+      video: "https://www.youtube.com/watch?v=lm4Nt-N6qUk",
+      videoQuery: "ring face pull tutorial"
+    },
+    "fsq": {
+      howto: [
+        "Osa leží na předních ramenech (přední rack), lokty drž vysoko před tělem.",
+        "Trup vzpřímený, dřep do plné hloubky, kolena ven směrem nad špičky.",
+        "Váha na celých chodidlech; z dolní pozice veď pohyb lokty vzhůru.",
+        "Zpevni břicho, ať se trup nepřeklápí dopředu."
+      ],
+      video: "https://www.youtube.com/watch?v=npVgCT7NznU",
+      videoQuery: "front squat technique tutorial"
+    },
+    "kliky-kruhy": {
+      howto: [
+        "Kruhy nízko (spodní hrana v půlce holeně), tělo v prkně od hlavy k patám.",
+        "Klik do plné hloubky, kruhy drž stabilně u těla, žádné třesení do stran.",
+        "Nahoře vytoč kruhy palci ven a propni lokty.",
+        "„−1 stopa“ = posuň špičky o stopu dozadu; tělo je víc naležato a cvik těžší."
+      ],
+      video: "https://www.youtube.com/watch?v=gjPDz7PsZ3k",
+      videoQuery: "ring push up tutorial"
+    },
+    "prit-kolen": {
+      howto: [
+        "Pasivní vis na hrazdě (ramena volně vytažená), tělo se nesmí rozhoupat.",
+        "Podsaď pánev a přitáhni kolena k hrudníku – ne jen zvednout nohy.",
+        "Dolů pomalu a kontrolovaně, další opakování bez švihu.",
+        "Progrese: pokrčená kolena → špičky až k hrazdě. Start ze stoje na 15cm bedýnce."
+      ],
+      video: "https://www.youtube.com/watch?v=l7OroezzX9k",
+      videoQuery: "hanging knee raise proper form"
+    },
+    "mt": {
+      howto: [
+        "Stoj na jedné noze, kettlebell v protilehlé ruce (křižné držení).",
+        "Ohyb v kyčli: napnutá zadní noha jde dozadu, trup dopředu – záda rovná jako prkno.",
+        "Boky drž rovnoběžně se zemí (nevytáčej pánev), stojná noha mírně pokrčená.",
+        "Činka klesá k 15cm bedýnce, pak propni kyčel a vzpřim se."
+      ],
+      video: "https://www.youtube.com/watch?v=2ZSHv5YvINM",
+      videoQuery: "single leg kettlebell deadlift tutorial"
+    }
+  },
+
   legend: [
     "SS – supersérie: oba cviky odjet za sebou a pauza až potom.",
     "Supersérie shybů a pistolí lze odjet i tak, že po jedné sérii shybů odjedeš pistole jen na jednu nohu – pistolí je 5 sérií, shybů 10.",
