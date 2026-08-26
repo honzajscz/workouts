@@ -1,6 +1,6 @@
 /* Service worker – appka funguje i offline (třeba v posilovně bez signálu).
    Při změně souborů zvyš číslo verze, ať se klientům obmění cache. */
-const CACHE = "trenink-v1";
+const CACHE = "trenink-v2";
 
 const ASSETS = [
   "./",

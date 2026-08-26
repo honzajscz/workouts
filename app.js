@@ -4,15 +4,17 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
 /* ---------------- úložiště ---------------- */
 
+const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true };
+
 const store = {
   sessions: [],                       // všechny tréninky (aktivní i dokončené)
-  settings: { theme: "auto", timer: true },
+  settings: Object.assign({}, DEFAULT_SETTINGS),
   activeId: null                      // id rozdělaného tréninku
 };
 
@@ -23,7 +25,7 @@ function loadStore() {
     const data = JSON.parse(raw);
     if (Array.isArray(data.sessions)) store.sessions = data.sessions;
     if (data.settings && typeof data.settings === "object") {
-      store.settings = Object.assign({ theme: "auto", timer: true }, data.settings);
+      store.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings);
     }
     store.activeId = typeof data.activeId === "string" ? data.activeId : null;
     if (store.activeId && !store.sessions.some(s => s.id === store.activeId)) {
@@ -293,7 +295,8 @@ function toggleSet(sid, exId, i) {
   set.done = !set.done;
   if (!set.done) set.actual = null;
   touch(sess);
-  if (set.done && sess.status === "active" && store.settings.timer) {
+  const inGuided = guided && guided.sid === sid;
+  if (set.done && sess.status === "active" && store.settings.timer && !inGuided) {
     const ex = getEx(sess.dayId, exId);
     if (ex && ex.pause) startRest(parsePause(ex.pause), ex.name);
   }
@@ -321,6 +324,7 @@ function finishSession(sid) {
   if (store.activeId === sid) store.activeId = null;
   touch(sess);
   stopRest();
+  if (guided && guided.sid === sid) stopGuided();
   showToast("Trénink uložen 💪");
   location.hash = "#/session/" + sid;
 }
@@ -331,6 +335,7 @@ function cancelSession(sid) {
   if (store.activeId === sid) store.activeId = null;
   saveStore();
   stopRest();
+  if (guided && guided.sid === sid) stopGuided();
   location.hash = "#/";
 }
 
@@ -339,6 +344,7 @@ function deleteSession(sid) {
   store.sessions = store.sessions.filter(s => s.id !== sid);
   if (store.activeId === sid) store.activeId = null;
   saveStore();
+  if (guided && guided.sid === sid) stopGuided();
   showToast("Záznam smazán");
   location.hash = "#/history";
 }
@@ -370,6 +376,17 @@ function stopRest() {
 function renderTimer() {
   const el = document.getElementById("timer");
   if (!el) return;
+  // pilulka řízeného tréninku, když je uživatel na jiné obrazovce
+  if (guided && !guided.finished && !(location.hash || "").startsWith("#/guided")) {
+    const step = guided.steps[guided.idx];
+    const remain = guided.paused ? guided.remainMs : Math.max(0, guided.endsAt - Date.now());
+    const s = Math.max(0, Math.ceil(remain / 1000));
+    const what = guided.phase === "rest" ? "pauza" : `S${step.setIdx + 1}`;
+    el.innerHTML = `<div class="timerpill" data-act="nav" data-href="#/guided/${guided.sid}">
+      ${guided.paused ? "⏸" : "▶"} <span class="lbl">${esc(step.name)} · ${esc(what)}</span>
+      ${Math.floor(s / 60)}:${pad2(s % 60)}</div>`;
+    return;
+  }
   if (!restTimer) { el.innerHTML = ""; return; }
   const ms = restTimer.until - Date.now();
   if (ms <= -6000) { stopRest(); return; }
@@ -385,6 +402,256 @@ function renderTimer() {
   el.innerHTML = `<div class="timerpill" data-act="timer-off">
     <span class="lbl">pauza</span> ${Math.floor(s / 60)}:${pad2(s % 60)}
     <span class="lbl">✕</span></div>`;
+}
+
+/* ---------------- zvuky a hlas ---------------- */
+
+let audioCtx = null;
+
+function ensureAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch { /* zařízení bez Web Audio */ }
+}
+
+function beep(freq, dur = 0.12, delay = 0, vol = 0.3) {
+  if (!store.settings.sound || !audioCtx) return;
+  try {
+    const t = audioCtx.currentTime + delay;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  } catch { /* ignore */ }
+}
+
+function soundWork()  { beep(1175, 0.12); beep(1568, 0.16, 0.15); if (navigator.vibrate) navigator.vibrate(120); }
+function soundRest()  { beep(392, 0.28); if (navigator.vibrate) navigator.vibrate(60); }
+function soundTick()  { beep(880, 0.09); }
+function soundDone()  { beep(1047, 0.15); beep(1319, 0.15, 0.18); beep(1568, 0.35, 0.36); if (navigator.vibrate) navigator.vibrate([150, 80, 150, 80, 300]); }
+
+function speak(text) {
+  if (!store.settings.voice) return;
+  try {
+    if (!("speechSynthesis" in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "cs-CZ";
+    u.rate = 1.05;
+    speechSynthesis.speak(u);
+  } catch { /* ignore */ }
+}
+
+function speakable(label) {
+  return String(label || "").replace(/\+/g, " plus ").replace(/,/g, " celá ");
+}
+
+/* ---------------- řízený trénink (autopilot) ---------------- */
+/* Vygeneruje z tréninku posloupnost kroků série/pauza, sám odpočítává,
+   píská, hlásí cviky a odškrtává hotové série. */
+
+const GUIDED_DEFAULTS = { work: 40, transition: 10, rest: 60 };
+
+let guided = null;        // {sid, steps, idx, phase, endsAt, dur, paused, remainMs, lastBeep, finished}
+let guidedInterval = null;
+let wakeLock = null;
+
+function exGuidedCfg(ex) {
+  const g = (ex && ex.guided) || {};
+  const rest = g.rest !== undefined ? g.rest
+    : (ex && ex.pause ? parsePause(ex.pause) : GUIDED_DEFAULTS.rest);
+  return { work: g.work !== undefined ? g.work : GUIDED_DEFAULTS.work, rest };
+}
+
+/* Kroky: supersérie se střídají po kolech („oba cviky a pak pauza“),
+   u nestejného počtu sérií se kratší cvik rozprostře (10+5 → 2S+1S). */
+function buildGuidedSteps(sess) {
+  const day = getDay(sess.dayId);
+  const targets = targetsFor(sess.dayId, sess.week);
+  const steps = [];
+  for (const g of groupBySS(day.exercises)) {
+    const counts = g.items.map(ex => sess.exercises[ex.id].sets.length);
+    const R = Math.max(...counts, 1);
+    for (let r = 1; r <= R; r++) {
+      const round = [];
+      g.items.forEach((ex, gi) => {
+        const c = counts[gi];
+        const from = Math.floor((r - 1) * c / R);
+        const to = Math.floor(r * c / R);
+        for (let s = from; s < to; s++) round.push({ ex, setIdx: s });
+      });
+      round.forEach((it, i) => {
+        const cfg = exGuidedCfg(it.ex);
+        const t = targets[it.ex.id];
+        steps.push({
+          exId: it.ex.id,
+          name: it.ex.name,
+          setIdx: it.setIdx,
+          setTotal: sess.exercises[it.ex.id].sets.length,
+          label: t.labels[it.setIdx] ? decorate(it.ex, t.labels[it.setIdx]) : "",
+          note: t.note || "",
+          work: cfg.work,
+          restAfter: i === round.length - 1 ? cfg.rest : GUIDED_DEFAULTS.transition
+        });
+      });
+    }
+  }
+  return steps.filter(st => !sess.exercises[st.exId].sets[st.setIdx].done);
+}
+
+function guidedTotalSeconds(steps, fromIdx = 0) {
+  let t = 0;
+  for (let i = fromIdx; i < steps.length; i++) {
+    t += steps[i].work;
+    if (i < steps.length - 1) t += steps[i].restAfter;
+  }
+  return t;
+}
+
+function startGuided(sid) {
+  const sess = getSession(sid);
+  if (!sess) return;
+  const steps = buildGuidedSteps(sess);
+  if (!steps.length) { showToast("Všechny série už máš hotové ✓"); return; }
+  ensureAudio();
+  stopRest();
+  guided = {
+    sid, steps, idx: 0, phase: "work",
+    dur: steps[0].work,
+    endsAt: Date.now() + steps[0].work * 1000,
+    paused: false, remainMs: 0, lastBeep: null, finished: false
+  };
+  if (!guidedInterval) guidedInterval = setInterval(guidedTick, 250);
+  requestWake();
+  soundWork();
+  announceStep();
+  location.hash = "#/guided/" + sid;
+  render();
+}
+
+function stopGuided() {
+  guided = null;
+  if (guidedInterval) { clearInterval(guidedInterval); guidedInterval = null; }
+  releaseWake();
+  try { if ("speechSynthesis" in window) speechSynthesis.cancel(); } catch { /* ignore */ }
+  renderTimer();
+}
+
+function announceStep() {
+  const st = guided.steps[guided.idx];
+  let text = `${st.name}. Série ${st.setIdx + 1} z ${st.setTotal}.`;
+  if (st.label) text += ` Cíl ${speakable(st.label)}.`;
+  speak(text);
+}
+
+function guidedTick() {
+  if (!guided || guided.paused || guided.finished) return;
+  const remain = guided.endsAt - Date.now();
+  const s = Math.ceil(remain / 1000);
+  if (s <= 3 && s >= 1 && guided.lastBeep !== s) { guided.lastBeep = s; soundTick(); }
+  if (remain <= 0) { advanceGuided(); return; }
+  if ((location.hash || "").startsWith("#/guided")) updateGuidedDom(remain);
+  else renderTimer();
+}
+
+function advanceGuided() {
+  if (!guided) return;
+  const sess = getSession(guided.sid);
+  if (!sess) { stopGuided(); return; }
+  guided.lastBeep = null;
+
+  if (guided.phase === "work") {
+    const step = guided.steps[guided.idx];
+    const set = sess.exercises[step.exId].sets[step.setIdx];
+    if (!set.done) { set.done = true; touch(sess); }
+
+    if (guided.idx === guided.steps.length - 1) {
+      guided.finished = true;
+      soundDone();
+      speak("Trénink hotový. Dobrá práce!");
+      releaseWake();
+      render();
+      return;
+    }
+    if (step.restAfter > 0) {
+      guided.phase = "rest";
+      guided.dur = step.restAfter;
+      guided.endsAt = Date.now() + step.restAfter * 1000;
+      const next = guided.steps[guided.idx + 1];
+      soundRest();
+      speak(`Pauza. Potom ${next.name}, série ${next.setIdx + 1}.`);
+      render();
+      return;
+    }
+  }
+  // konec pauzy (nebo série bez pauzy) → další série
+  guided.idx++;
+  const st = guided.steps[guided.idx];
+  guided.phase = "work";
+  guided.dur = st.work;
+  guided.endsAt = Date.now() + st.work * 1000;
+  soundWork();
+  announceStep();
+  render();
+}
+
+function pauseGuided() {
+  if (!guided || guided.finished) return;
+  if (guided.paused) {
+    guided.endsAt = Date.now() + guided.remainMs;
+    guided.paused = false;
+  } else {
+    guided.remainMs = Math.max(0, guided.endsAt - Date.now());
+    guided.paused = true;
+  }
+  render();
+}
+
+function extendGuided(sec) {
+  if (!guided || guided.finished) return;
+  if (guided.paused) guided.remainMs += sec * 1000;
+  else guided.endsAt += sec * 1000;
+  guided.dur += sec;
+  guided.lastBeep = null;
+  render();
+}
+
+async function requestWake() {
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch { /* nepodporováno */ }
+}
+function releaseWake() {
+  try { if (wakeLock) wakeLock.release(); } catch { /* ignore */ }
+  wakeLock = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && guided && !guided.finished) requestWake();
+});
+
+function updateGuidedDom(remainMs) {
+  const t = document.getElementById("g-time");
+  if (!t) return;
+  const s = Math.max(0, Math.ceil(remainMs / 1000));
+  t.textContent = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+  const ring = document.getElementById("g-ringbar");
+  if (ring && guided.dur > 0) {
+    const C = 628.3;
+    const frac = Math.min(1, Math.max(0, remainMs / (guided.dur * 1000)));
+    ring.style.strokeDashoffset = String(C * (1 - frac));
+  }
+  const est = document.getElementById("g-est");
+  if (est) {
+    const restRemain = guided.phase === "rest" || guided.idx >= guided.steps.length - 1
+      ? 0 : guided.steps[guided.idx].restAfter;
+    const total = Math.round(remainMs / 1000) + restRemain + guidedTotalSeconds(guided.steps, guided.idx + 1);
+    est.textContent = `zbývá ≈ ${Math.max(1, Math.round(total / 60))} min`;
+  }
 }
 
 /* ---------------- toast ---------------- */
@@ -541,6 +808,16 @@ function render() {
     };
     html = vWorkout(sess);
     document.body.classList.add("has-workfoot");
+  } else if (route === "guided" && getSession(parts[1])) {
+    const sess = getSession(parts[1]);
+    if (!guided || guided.sid !== sess.id) { location.replace("#/workout/" + sess.id); return; }
+    tab = "home";
+    header = {
+      title: "Řízený trénink",
+      sub: `${getDay(sess.dayId).name} · Týden ${sess.week}`,
+      back: "#/workout/" + sess.id
+    };
+    html = vGuided(sess);
   } else if (route === "history") {
     tab = "history";
     header = { title: "Historie", sub: "Dokončené tréninky", back: null };
@@ -797,6 +1074,20 @@ function vWorkout(sess) {
   const done = setsDoneCount(sess);
   const total = setsTotalCount(sess);
 
+  let guidedBtn = "";
+  if (isActive) {
+    if (guided && guided.sid === sess.id && !guided.finished) {
+      guidedBtn = `<a class="btn guided block" style="margin-bottom:12px" href="#/guided/${sess.id}">▶ Pokračovat v řízeném tréninku</a>`;
+    } else {
+      const remSteps = buildGuidedSteps(sess);
+      if (remSteps.length) {
+        const est = Math.round(guidedTotalSeconds(remSteps) / 60);
+        guidedBtn = `<button class="btn guided block" style="margin-bottom:4px" data-act="guided" data-sid="${sess.id}">▶ Řízený trénink · ≈ ${est} min</button>
+        <p class="muted small" style="margin:0 4px 12px">Časovač tě sám provede sériemi i pauzami, píská, hlásí cviky a série odškrtává za tebe. Rozcvičku si dej před startem.</p>`;
+      }
+    }
+  }
+
   return `
     <div class="card">
       <div class="row">
@@ -804,6 +1095,7 @@ function vWorkout(sess) {
         <input type="date" value="${esc(sess.date)}" data-in="date" data-sid="${sess.id}" style="flex:1">
       </div>
     </div>
+    ${guidedBtn}
     ${warmHtml}
     ${exHtml}
     <div class="card">
@@ -819,6 +1111,66 @@ function vWorkout(sess) {
         ? `<button class="btn primary" style="flex:2" data-act="finish" data-sid="${sess.id}">✓ Dokončit trénink</button>`
         : `<a class="btn primary" style="flex:2" href="#/session/${sess.id}">✓ Hotovo</a>`}
     </div></div>`;
+}
+
+function vGuided(sess) {
+  if (guided.finished) {
+    const done = setsDoneCount(sess);
+    const total = setsTotalCount(sess);
+    return `<div class="guided">
+      <div class="g-done-emoji">🎉</div>
+      <h2 class="g-ex">Trénink hotový!</h2>
+      <p class="hint" style="margin:4px 0 20px">${done} z ${total} sérií odškrtnuto</p>
+      <button class="btn primary block" style="margin-bottom:10px" data-act="finish" data-sid="${sess.id}">✓ Uložit a dokončit trénink</button>
+      <button class="btn block" data-act="g-exit" data-sid="${sess.id}">Zpět na záznam (doplnit poznámky)</button>
+    </div>`;
+  }
+
+  const st = guided.steps[guided.idx];
+  const isWork = guided.phase === "work";
+  const next = guided.steps[guided.idx + 1] || null;
+  const shown = isWork ? st : (next || st);   // v pauze ukazujeme, co přijde
+  const remain = guided.paused ? guided.remainMs : Math.max(0, guided.endsAt - Date.now());
+  const s = Math.max(0, Math.ceil(remain / 1000));
+  const C = 628.3;
+  const frac = guided.dur > 0 ? Math.min(1, Math.max(0, remain / (guided.dur * 1000))) : 0;
+
+  const nextPill = isWork
+    ? (next
+        ? `<div class="g-next">Pak: ${esc(next.name)} · S${next.setIdx + 1}${next.label ? ` (${esc(next.label)})` : ""}</div>`
+        : `<div class="g-next">Poslední série! 🔥</div>`)
+    : `<div class="g-next">Odpočiň si a připrav se ☝️</div>`;
+
+  return `<div class="guided">
+    <div class="g-phase ${isWork ? "work" : "rest"}">${isWork ? "CVIČÍŠ" : "PAUZA"}</div>
+    <div class="g-ring">
+      <svg viewBox="0 0 240 240">
+        <circle class="g-ring-bg" cx="120" cy="120" r="100"></circle>
+        <circle id="g-ringbar" class="g-ring-bar ${isWork ? "work" : "rest"}" cx="120" cy="120" r="100"
+          stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - frac)}"></circle>
+      </svg>
+      <div class="g-ring-inner">
+        <div class="g-time" id="g-time">${Math.floor(s / 60)}:${pad2(s % 60)}</div>
+        ${shown.label ? `<div class="g-target">${esc(shown.label)}</div>` : ""}
+      </div>
+    </div>
+    <h2 class="g-ex">${isWork ? "" : "Připrav se: "}${esc(shown.name)}</h2>
+    <div class="g-set">Série ${shown.setIdx + 1} z ${shown.setTotal}${shown.note ? ` · ${esc(shown.note)}` : ""}</div>
+    ${nextPill}
+    <div class="g-controls">
+      <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
+      <button class="gbtn main" data-act="g-next">${isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu"}</button>
+      <button class="gbtn" data-act="g-plus">+15 s</button>
+    </div>
+    <div class="g-meta">
+      <button class="linkbtn" data-act="toggle-voice">${store.settings.voice ? "🔊 hlas" : "🔇 hlas"}</button>
+      <span class="muted small">Krok ${guided.idx + 1}/${guided.steps.length} · <span id="g-est">zbývá ≈ ${Math.max(1, Math.round((Math.round(remain / 1000) + (isWork && next ? st.restAfter : 0) + guidedTotalSeconds(guided.steps, guided.idx + 1)) / 60))} min</span></span>
+      <button class="linkbtn" data-act="toggle-sound">${store.settings.sound ? "🔔 zvuk" : "🔕 zvuk"}</button>
+    </div>
+    <p class="center" style="margin-top:18px">
+      <button class="linkbtn" data-act="g-exit" data-sid="${sess.id}">Ukončit řízený režim (zpět na ruční odškrtávání)</button>
+    </p>
+  </div>`;
 }
 
 function vHistory() {
@@ -1049,6 +1401,14 @@ function vMore() {
         <div class="lbl">⏱ Odpočet pauzy po odškrtnuté sérii</div>
         <div class="switch ${store.settings.timer ? "on" : ""}"></div>
       </div>
+      <div class="switchrow" data-act="toggle-sound">
+        <div class="lbl">🔔 Zvuky časovače (pípání)</div>
+        <div class="switch ${store.settings.sound ? "on" : ""}"></div>
+      </div>
+      <div class="switchrow" data-act="toggle-voice">
+        <div class="lbl">🔊 Hlasové pokyny v řízeném tréninku</div>
+        <div class="switch ${store.settings.voice ? "on" : ""}"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -1095,6 +1455,25 @@ document.addEventListener("click", e => {
     case "cancel": cancelSession(d.sid); break;
     case "del": deleteSession(d.sid); break;
     case "timer-off": stopRest(); break;
+    case "guided": startGuided(d.sid); break;
+    case "g-next": ensureAudio(); advanceGuided(); break;
+    case "g-pause": pauseGuided(); break;
+    case "g-plus": extendGuided(15); break;
+    case "g-exit": stopGuided(); location.hash = "#/workout/" + d.sid; break;
+    case "toggle-sound": {
+      store.settings.sound = !store.settings.sound;
+      if (store.settings.sound) { ensureAudio(); soundTick(); }
+      saveStore();
+      render();
+      break;
+    }
+    case "toggle-voice": {
+      store.settings.voice = !store.settings.voice;
+      if (!store.settings.voice) { try { speechSynthesis.cancel(); } catch { /* ignore */ } }
+      saveStore();
+      render();
+      break;
+    }
     case "theme": {
       store.settings.theme = d.v;
       applyTheme();

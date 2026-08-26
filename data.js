@@ -15,6 +15,9 @@
    - sets: výchozí počet sérií (přepíše se, pokud jde spočítat z buňky)
    - ss:   číslo supersérie v rámci dne (stejné číslo = cviky jedou spolu)
    - pause: pauza mezi sériemi (z tabulky), používá ji odpočet
+   - guided: časování pro řízený trénink (autopilot):
+       work – kolik sekund trvá jedna série (výchozí 40 s)
+       rest – pauza po sérii/kole v sekundách (výchozí = pause, jinak 60 s)
    ========================================================= */
 
 const PLAN = {
@@ -60,6 +63,7 @@ const PLAN = {
           sets: 3,
           unit: "kg",
           block: "6 min",
+          guided: { work: 120, rest: 15 },
           note: "1 TGU = 4× press · lze použít i jednoručku",
           weeks: ["8-8-8", "12-8-8", "12-12-8", "12-12-12", "14-12-12", "14-14-12",
                   "14-14-14", "16-14-14", "16-16-14", "16-16-16", "18-16-16", "18-18-16"]
@@ -68,6 +72,7 @@ const PLAN = {
           id: "shyby",
           name: "Shyby nadhmatem",
           sets: 10, ss: 1,
+          guided: { rest: 45 },
           note: "dopomoc: oranžový + tyrkysový expander · 2 série shybů + 1 série pistolí",
           weeks: ["3-3-3-3-3-3-3-3-3-3", "4-4-3-3-3-3-3-3-3-3", "4-4-4-4-3-3-3-3-3-3",
                   "4-4-4-4-4-4-3-3-3-3", "4-4-4-4-4-4-4-4-3-3", "4-4-4-4-4-4-4-4-4-4",
@@ -78,6 +83,7 @@ const PLAN = {
           id: "pistole",
           name: "Pistole s podložením",
           sets: 5, ss: 1,
+          guided: { work: 45, rest: 45 },
           block: "za 15–20 min",
           weeks: ["2+2 50 cm sit", "4+4 50 cm sit", "2+2 50 cm touch", "4+4 50 cm touch",
                   "2+2 45 cm touch", "4+4 45 cm touch", "2+2 40 cm touch", "4+4 40 cm touch",
@@ -95,6 +101,7 @@ const PLAN = {
           id: "bulharske",
           name: "Bulharské dřepy",
           sets: 5, ss: 2, pause: "1:30",
+          guided: { work: 50 },
           weeks: ["2+2 2x10 kg", "4+4 2x10 kg", "6+6 2x10 kg", "3+3 2x12 kg", "5+5 2x12 kg",
                   "2+2 2x14 kg", "4+4 2x14 kg", "6+6 2x14 kg", "3+3 2x16 kg", "5+5 2x16 kg",
                   "2+2 2x18 kg", "4+4 2x18 kg"]
@@ -104,6 +111,7 @@ const PLAN = {
           name: "Jednoruční swing",
           sets: 10,
           block: "zhušťovací série · obě ruce v minutě",
+          guided: { work: 60, rest: 0 },
           weeks: ["5+5; 10 sérií 16kg", "7+7; 8 sérií 16kg", "9+9; 6 sérií 16kg",
                   "5+5; 10 sérií 20kg", "7+7; 8 sérií 20kg", "9+9; 6 sérií 20kg",
                   "5+5; 10 sérií 22kg", "7+7; 8 sérií 22kg", "9+9; 6 sérií 22kg",
@@ -136,6 +144,7 @@ const PLAN = {
           id: "fsq",
           name: "FSQ (přední dřep)",
           sets: 5, ss: 2, pause: "1:30",
+          guided: { work: 45 },
           weeks: ["6x 45 kg", "7x 45 kg", "8x 45 kg", "9x 45 kg", "10x 45 kg", "5x 50 kg",
                   "6x 50 kg", "7x 50 kg", "8x 50 kg", "9x 50 kg", "10x 50 kg", "5x 52,5 kg"]
         },
@@ -151,6 +160,7 @@ const PLAN = {
           id: "prit-kolen",
           name: "Přitahování kolen v pasivním visu",
           sets: 4, ss: 3, pause: "1:30",
+          guided: { work: 30 },
           note: "BW · 15cm bedýnka",
           weeks: ["2", "3", "4", "5", "6", "6", "6", "7", "8",
                   "2x špičky k hrazdě", "3x špičky k hrazdě", "4x špičky k hrazdě"]
@@ -159,6 +169,7 @@ const PLAN = {
           id: "mt",
           name: "MT na jedné noze – křižné držení",
           sets: 5, ss: 3, pause: "1:30",
+          guided: { work: 50 },
           note: "15cm bedýnka",
           weeks: ["2+2 16 kg", "3+3 16 kg", "4+4 16 kg", "5+5 16 kg", "2+2 20 kg", "3+3 20 kg",
                   "4+4 20 kg", "5+5 20 kg", "2+2 24 kg", "3+3 24 kg", "4+4 24 kg", "5+5 24 kg"]
@@ -176,6 +187,7 @@ const PLAN = {
           sets: 3,
           unit: "kg",
           block: "6 min",
+          guided: { work: 120, rest: 15 },
           note: "1 TGU = 4× press · lze použít i jednoručku",
           weeks: ["8-8-8", "12-8-8", "12-12-8", "12-12-12", "14-12-12", "14-14-12",
                   "14-14-14", "16-14-14", "16-16-14", "16-16-16", "18-16-16", "18-18-16"]
@@ -184,6 +196,7 @@ const PLAN = {
           id: "shyby",
           name: "Shyby nadhmatem",
           sets: 10, ss: 1,
+          guided: { rest: 45 },
           note: "dopomoc: oranžový + tyrkysový expander · 2 série shybů + 1 série pistolí",
           weeks: ["4-3-3-3-3-3-3-3-3-3", "4-4-4-3-3-3-3-3-3-3", "4-4-4-4-4-3-3-3-3-3",
                   "4-4-4-4-4-4-4-3-3-3", "4-4-4-4-4-4-4-4-4-3", "5-4-4-4-4-4-4-4-4-4",
@@ -194,6 +207,7 @@ const PLAN = {
           id: "pistole",
           name: "Pistole s podložením",
           sets: 5, ss: 1,
+          guided: { work: 45, rest: 45 },
           block: "za 15–20 min",
           weeks: ["3+3 50 cm sit", "5+5 50 cm sit", "3+3 50 cm touch", "5+5 50 cm touch",
                   "3+3 45 cm touch", "5+5 45 cm touch", "3+3 40 cm touch", "5+5 40 cm touch",
@@ -211,6 +225,7 @@ const PLAN = {
           id: "bulharske",
           name: "Bulharské dřepy",
           sets: 5, ss: 2, pause: "1:30",
+          guided: { work: 50 },
           weeks: ["3+3 2x10 kg", "5+5 2x10 kg", "2+2 2x12 kg", "4+4 2x12 kg", "6+6 2x12 kg",
                   "3+3 2x14 kg", "5+5 2x14 kg", "2+2 2x16 kg", "4+4 2x16 kg", "6+6 2x16 kg",
                   "3+3 2x18 kg", "5+5 2x18 kg"]
@@ -220,6 +235,7 @@ const PLAN = {
           name: "Jednoruční swing",
           sets: 9,
           block: "zhušťovací série · obě ruce v minutě",
+          guided: { work: 60, rest: 0 },
           weeks: ["6+6; 9 sérií 16kg", "8+8; 7 sérií 16kg", "10+10; 5 sérií 16kg",
                   "6+6; 9 sérií 20kg", "8+8; 7 sérií 20kg", "10+10; 5 sérií 20kg",
                   "6+6; 9 sérií 22kg", "8+8; 7 sérií 22kg", "10+10; 5 sérií 22kg",
