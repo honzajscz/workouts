@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="cs" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Trénink</title>
+  <meta name="description" content="Tréninkový deník – plán A1/B/A2, trackování sérií, historie a statistiky. Data zůstávají ve tvém prohlížeči.">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Trénink">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <a id="h-back" class="back" href="#/" style="display:none" aria-label="Zpět">‹</a>
+    <div class="head-txt">
+      <h1 id="h-title">Trénink</h1>
+      <p class="sub" id="h-sub"></p>
+    </div>
+  </header>
+
+  <main id="view">
+    <noscript><p style="padding:20px">Aplikace potřebuje zapnutý JavaScript.</p></noscript>
+  </main>
+
+  <nav class="tabbar">
+    <a href="#/" data-tab="home"><span class="ico">🏋️</span>Plán</a>
+    <a href="#/history" data-tab="history"><span class="ico">🗓️</span>Historie</a>
+    <a href="#/stats" data-tab="stats"><span class="ico">📈</span>Statistiky</a>
+    <a href="#/more" data-tab="more"><span class="ico">⚙️</span>Více</a>
+  </nav>
+
+  <div id="timer"></div>
+  <div id="toast"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
