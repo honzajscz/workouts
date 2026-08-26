@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -616,6 +616,30 @@ function pauseGuided() {
   render();
 }
 
+/* Krok zpět: vrátí se na předchozí sérii (zruší její odškrtnutí);
+   na úplném začátku jen restartuje odpočet aktuální série. */
+function backGuided() {
+  if (!guided || guided.finished) return;
+  const sess = getSession(guided.sid);
+  if (!sess) return;
+  let target;
+  if (guided.phase === "rest") target = guided.idx;        // zpět k právě dojeté sérii
+  else if (guided.idx > 0) target = guided.idx - 1;        // o sérii zpět
+  else target = 0;                                         // začátek → restart odpočtu
+  const st = guided.steps[target];
+  const set = sess.exercises[st.exId].sets[st.setIdx];
+  if (set.done) { set.done = false; set.actual = null; touch(sess); }
+  guided.idx = target;
+  guided.phase = "work";
+  guided.dur = st.work;
+  guided.endsAt = Date.now() + st.work * 1000;
+  guided.paused = false;
+  guided.lastBeep = null;
+  soundWork();
+  announceStep();
+  render();
+}
+
 function extendGuided(sec) {
   if (!guided || guided.finished) return;
   if (guided.paused) guided.remainMs += sec * 1000;
@@ -1164,6 +1188,7 @@ function vGuided(sess) {
     <div class="g-set">Série ${shown.setIdx + 1} z ${shown.setTotal}${shown.note ? ` · ${esc(shown.note)}` : ""}</div>
     ${nextPill}
     <div class="g-controls">
+      <button class="gbtn" data-act="g-back" title="Zpět o sérii">◀</button>
       <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
       <button class="gbtn main" data-act="g-next">${isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu"}</button>
       <button class="gbtn" data-act="g-plus">+15 s</button>
@@ -1470,6 +1495,7 @@ document.addEventListener("click", e => {
     case "timer-off": stopRest(); break;
     case "guided": startGuided(d.sid); break;
     case "g-next": ensureAudio(); advanceGuided(); break;
+    case "g-back": ensureAudio(); backGuided(); break;
     case "g-pause": pauseGuided(); break;
     case "g-plus": extendGuided(15); break;
     case "g-exit": stopGuided(); location.hash = "#/workout/" + d.sid; break;

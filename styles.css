@@ -804,14 +804,14 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 
 .g-controls {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
   margin-top: 18px;
 }
 .gbtn {
   min-height: 58px;
-  min-width: 64px;
-  padding: 8px 14px;
+  min-width: 54px;
+  padding: 8px 10px;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--card);
