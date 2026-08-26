@@ -2,7 +2,7 @@
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v5";
+const CACHE = "trenink-v6";
 
 const ASSETS = [
   "./",

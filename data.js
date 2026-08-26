@@ -42,6 +42,13 @@ const PLAN = {
     { name: "Prkno na hrazdě", note: "10 s" }
   ],
 
+  /* Krátká jména cviků pro kompaktní zobrazení (řetězec supersérie apod.) */
+  shortNames: {
+    "tgu": "TGU", "shyby": "Shyby", "pistole": "Pistole", "kliky-bradla": "Kliky",
+    "bulharske": "Bulhary", "swing": "Swing", "pike": "Pike", "facepull": "Facepull",
+    "fsq": "FSQ", "kliky-kruhy": "Kliky", "prit-kolen": "Kolena", "mt": "MT"
+  },
+
   /* Instrukce k technice a videa – klíčem je id cviku.
      howto: krátké body, jak cvik správně provést
      video: doporučený tutoriál na YouTube

@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -500,6 +500,8 @@ function buildGuidedSteps(sess) {
           label: t.labels[it.setIdx] ? decorate(it.ex, t.labels[it.setIdx]) : "",
           note: t.note || "",
           work: cfg.work,
+          ss: g.ss || 0,
+          roundEnd: i === round.length - 1,
           restAfter: i === round.length - 1 ? cfg.rest : GUIDED_DEFAULTS.transition
         });
       });
@@ -1201,6 +1203,37 @@ function vGuided(sess) {
         : `<div class="g-next">Poslední série! 🔥</div>`)
     : `<div class="g-next">Odpočiň si a připrav se ☝️</div>`;
 
+  // referenční krok: při práci aktuální série, v pauze ta nadcházející
+  const ref = isWork ? guided.idx : Math.min(guided.idx + 1, guided.steps.length - 1);
+
+  // řetězec aktuálního kola supersérie (co jedu teď → co hned potom → pauza)
+  let roundChain = "";
+  const refStep = guided.steps[ref];
+  if (refStep.ss) {
+    let start = ref;
+    while (start > 0 && !guided.steps[start - 1].roundEnd) start--;
+    let end = ref;
+    while (end < guided.steps.length - 1 && !guided.steps[end].roundEnd) end++;
+    if (end > start) {
+      const parts = [];
+      for (let i = start; i <= end; i++) {
+        const s2 = guided.steps[i];
+        const nm = `${esc((PLAN.shortNames || {})[s2.exId] || s2.name)} S${s2.setIdx + 1}`;
+        if (i < ref) parts.push(`<span class="rc-done">${nm} ✓</span>`);
+        else if (i === ref) parts.push(`<b>${nm}</b>`);
+        else parts.push(nm);
+      }
+      roundChain = `<div class="g-round"><span class="ss-tag">SUPERSÉRIE</span>${parts.join(" <span class=\"rc-arr\">→</span> ")} <span class="rc-arr">→</span> 💤</div>`;
+    }
+  }
+
+  // segmentový průběh celého tréninku (jeden dílek = jedna série)
+  const segs = guided.steps.map((s2, i) =>
+    `<i class="seg${i < ref ? " done" : ""}${i === ref ? " cur" : ""}${s2.roundEnd ? " rend" : ""}"></i>`
+  ).join("");
+  const estMin = Math.max(1, Math.round((Math.round(remain / 1000) +
+    (isWork && next ? st.restAfter : 0) + guidedTotalSeconds(guided.steps, guided.idx + 1)) / 60));
+
   return `<div class="guided">
     <div class="g-phase ${isWork ? "work" : "rest"}">${isWork ? "CVIČÍŠ" : "PAUZA"}</div>
     <div class="g-ring">
@@ -1217,7 +1250,11 @@ function vGuided(sess) {
     <h2 class="g-ex">${isWork ? "" : "Připrav se: "}${esc(shown.name)}</h2>
     <div class="g-set">Série ${shown.setIdx + 1} z ${shown.setTotal}${shown.note ? ` · ${esc(shown.note)}` : ""}
       <button class="infobtn" data-act="exinfo" data-ex="${shown.exId}" aria-label="Jak cvičit">?</button></div>
-    ${nextPill}
+    ${roundChain || nextPill}
+    <div class="g-progwrap">
+      <div class="g-prog">${segs}</div>
+      <div class="g-progtxt muted small">${ref}/${guided.steps.length} sérií hotovo · <span id="g-est">zbývá ≈ ${estMin} min</span></div>
+    </div>
     <div class="g-controls">
       <button class="gbtn" data-act="g-back" title="Zpět o sérii">◀</button>
       <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
@@ -1226,7 +1263,6 @@ function vGuided(sess) {
     </div>
     <div class="g-meta">
       <button class="linkbtn" data-act="toggle-voice">${store.settings.voice ? "🔊 hlas" : "🔇 hlas"}</button>
-      <span class="muted small">Krok ${guided.idx + 1}/${guided.steps.length} · <span id="g-est">zbývá ≈ ${Math.max(1, Math.round((Math.round(remain / 1000) + (isWork && next ? st.restAfter : 0) + guidedTotalSeconds(guided.steps, guided.idx + 1)) / 60))} min</span></span>
       <button class="linkbtn" data-act="toggle-sound">${store.settings.sound ? "🔔 zvuk" : "🔕 zvuk"}</button>
     </div>
     <p class="center" style="margin-top:18px">

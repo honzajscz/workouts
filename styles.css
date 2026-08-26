@@ -833,11 +833,58 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .g-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 16px;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 12px;
 }
 .g-meta .linkbtn { text-decoration: none; }
+
+/* kolo supersérie */
+.g-round {
+  margin-top: 10px;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 13px;
+  padding: 8px 13px;
+  line-height: 1.6;
+}
+.g-round b { color: var(--accent); font-size: 14px; }
+.g-round .rc-done { opacity: 0.55; }
+.g-round .rc-arr { opacity: 0.5; }
+.g-round .ss-tag {
+  display: block;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  margin-bottom: 2px;
+}
+
+/* segmentový průběh celého tréninku */
+.g-progwrap { margin-top: 16px; }
+.g-prog {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 13px;
+  padding: 0 2px;
+}
+.g-prog .seg {
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 7px;
+  border-radius: 3px;
+  background: var(--card-2);
+}
+.g-prog .seg.done { background: var(--accent); opacity: 0.5; }
+.g-prog .seg.cur { background: var(--accent); opacity: 1; height: 13px; }
+.g-prog .seg.rend { margin-right: 4px; }
+.g-prog .seg:last-child { margin-right: 0; }
+.g-progtxt { margin-top: 6px; text-align: center; }
 
 .g-done-emoji { font-size: 64px; margin: 26px 0 10px; }
 
