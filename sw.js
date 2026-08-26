@@ -1,6 +1,8 @@
 /* Service worker – appka funguje i offline (třeba v posilovně bez signálu).
-   Při změně souborů zvyš číslo verze, ať se klientům obmění cache. */
-const CACHE = "trenink-v2";
+   Strategie network-first: když je připojení, vždy se načte nejnovější verze;
+   bez připojení se použije poslední stažená kopie z cache.
+   Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
+const CACHE = "trenink-v3";
 
 const ASSETS = [
   "./",
@@ -35,33 +37,18 @@ self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET" || !req.url.startsWith(self.location.origin)) return;
 
-  // navigace: nejdřív síť (čerstvá verze), při výpadku cache
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put("./index.html", copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match("./index.html"))
-    );
-    return;
-  }
+  // navigace se ukládá pod index.html, ať offline funguje i s #/... adresou
+  const cacheKey = req.mode === "navigate" ? "./index.html" : req;
 
-  // ostatní soubory: cache hned, na pozadí aktualizace (stale-while-revalidate)
   event.respondWith(
-    caches.match(req).then(cached => {
-      const fresh = fetch(req)
-        .then(res => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fresh;
-    })
+    fetch(req)
+      .then(res => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(cacheKey, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(cacheKey))
   );
 });

@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -211,19 +211,21 @@ function newSession(dayId, week) {
   return sess;
 }
 
-function startSession(dayId, week) {
+function startSession(dayId, week, guidedMode) {
   if (store.activeId) {
     const act = getSession(store.activeId);
     const label = act ? `${act.dayId} · Týden ${act.week}` : "";
     if (!confirm(`Máš rozdělaný trénink (${label}). Zahodit ho a začít nový?`)) return;
     store.sessions = store.sessions.filter(s => s.id !== store.activeId);
     store.activeId = null;
+    if (guided) stopGuided();
   }
   const sess = newSession(dayId, week);
   store.sessions.push(sess);
   store.activeId = sess.id;
   saveStore();
-  location.hash = "#/workout/" + sess.id;
+  if (guidedMode) startGuided(sess.id);
+  else location.hash = "#/workout/" + sess.id;
 }
 
 function setsDoneCount(sess) {
@@ -888,8 +890,9 @@ function vHome() {
       <div class="next-label">Na řadě</div>
       <p class="next-name">${esc(day.name)} · Týden ${sug.week}</p>
       <p class="hint" style="margin:0 0 12px">Dokončeno ${totalDone} z ${totalAll} tréninků programu</p>
+      <button class="btn primary block" style="margin-bottom:8px" data-act="start" data-day="${day.id}" data-week="${sug.week}">Začít trénink</button>
       <div class="row">
-        <button class="btn primary grow" data-act="start" data-day="${day.id}" data-week="${sug.week}">Začít trénink</button>
+        <button class="btn guided grow" data-act="start-guided" data-day="${day.id}" data-week="${sug.week}">▶ Řízený trénink</button>
         <a class="btn" href="#/day/${day.id}?w=${sug.week}">Detail</a>
       </div>
     </div>`;
@@ -995,8 +998,11 @@ function vDay(day, week) {
   return `${activeBanner()}
     ${weekChips(day, week)}
     ${sheetDate && !past.length ? `<p class="muted small" style="margin:2px 4px 10px">📄 Podle původní tabulky odcvičeno ${esc(sheetDate)}</p>` : ""}
-    <button class="btn primary block" style="margin-bottom:14px" data-act="start" data-day="${day.id}" data-week="${week}">
+    <button class="btn primary block" style="margin-bottom:8px" data-act="start" data-day="${day.id}" data-week="${week}">
       Začít trénink · Týden ${week}
+    </button>
+    <button class="btn guided block" style="margin-bottom:14px" data-act="start-guided" data-day="${day.id}" data-week="${week}">
+      ▶ Začít řízeně – časovač tě provede sám
     </button>
     ${exHtml}
     ${pastHtml}`;
@@ -1417,10 +1423,16 @@ function vMore() {
     </div>
 
     <div class="card">
+      <h2>🔄 Aktualizace</h2>
+      <p class="hint">Verze aplikace: <b>${APP_VERSION}</b>. Novinky se stahují samy při otevření s připojením. Kdyby appka vypadala zastarale, ťukni sem:</p>
+      <button class="btn block" style="margin-top:10px" data-act="refresh-app">Obnovit aplikaci</button>
+      <p class="hint small" style="margin:8px 0 0">Obnovení nemaže žádný progres – jen znovu stáhne soubory aplikace.</p>
+    </div>
+
+    <div class="card">
       <h2>O aplikaci</h2>
       <p class="hint">Tréninkový plán převzatý z <a href="${esc(PLAN.source)}" target="_blank" rel="noopener">Google tabulky</a>. Aplikace běží na GitHub Pages, funguje i offline a data má jen ve tvém prohlížeči (nikam se neposílají).</p>
       <p class="hint">💡 Tip pro mobil: v prohlížeči zvol „Přidat na plochu“ – appka se pak chová jako nativní a data v ní vydrží spolehlivěji.</p>
-      <p class="hint">Verze ${APP_VERSION}</p>
       <hr class="sep">
       <button class="btn danger block" data-act="wipe">🗑 Smazat všechna data</button>
     </div>`;
@@ -1435,6 +1447,7 @@ document.addEventListener("click", e => {
   switch (d.act) {
     case "nav": location.hash = d.href.replace(/^#/, "").startsWith("/") ? d.href : "#/" + d.href; break;
     case "start": startSession(d.day, +d.week); break;
+    case "start-guided": ensureAudio(); startSession(d.day, +d.week, true); break;
     case "repeat": startSession(d.day, +d.week); break;
     case "week": {
       location.replace(`#/day/${d.day}?w=${d.week}`);
@@ -1501,6 +1514,23 @@ document.addEventListener("click", e => {
     }
     case "import-cancel": pendingImport = null; render(); break;
     case "wipe": wipeAll(); break;
+    case "refresh-app": {
+      showToast("Obnovuji aplikaci…");
+      (async () => {
+        try {
+          if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (const r of regs) await r.update();
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            for (const k of keys) await caches.delete(k);
+          }
+        } catch { /* ignore */ }
+        location.reload();
+      })();
+      break;
+    }
   }
 });
 
