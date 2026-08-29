@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.5.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true 
 const store = {
   sessions: [],                       // všechny tréninky (aktivní i dokončené)
   settings: Object.assign({}, DEFAULT_SETTINGS),
-  activeId: null                      // id rozdělaného tréninku
+  activeId: null,                     // id rozdělaného tréninku
+  program: { restartWeek: null, restartAt: null }  // návrat v programu (nemoc/dovolená)
 };
 
 function loadStore() {
@@ -30,6 +31,9 @@ function loadStore() {
     store.activeId = typeof data.activeId === "string" ? data.activeId : null;
     if (store.activeId && !store.sessions.some(s => s.id === store.activeId)) {
       store.activeId = null;
+    }
+    if (data.program && typeof data.program === "object") {
+      store.program = Object.assign({ restartWeek: null, restartAt: null }, data.program);
     }
   } catch (err) {
     console.error("Nepodařilo se načíst uložená data:", err);
@@ -249,17 +253,39 @@ function lastDoneFor(dayId) {
   return list.length ? list[list.length - 1] : null;
 }
 
+/* ---- návrat v programu (po nemoci/dovolené) ----
+   Když je nastaven restartWeek, „na řadě“ se počítá jen ze záznamů
+   dokončených PO nastavení návratu – dřívější historie zůstává,
+   ale týdny od restartWeek se nabízejí znovu. */
+
+function restartActive() {
+  return !!(store.program && store.program.restartWeek);
+}
+
+function isAfterRestart(s) {
+  if (!restartActive()) return true;
+  return String(s.finishedAt || s.updatedAt || "") >= String(store.program.restartAt || "");
+}
+
+function effDone(dayId, week) {
+  return sessionsFor(dayId, week).filter(isAfterRestart);
+}
+
+function programStartWeek() {
+  return restartActive() ? store.program.restartWeek : 1;
+}
+
 function defaultWeekFor(dayId) {
-  for (let w = 1; w <= PLAN.weeks; w++) {
-    if (!sessionsFor(dayId, w).length) return w;
+  for (let w = programStartWeek(); w <= PLAN.weeks; w++) {
+    if (!effDone(dayId, w).length) return w;
   }
   return PLAN.weeks;
 }
 
 function suggestion() {
-  for (let w = 1; w <= PLAN.weeks; w++) {
+  for (let w = programStartWeek(); w <= PLAN.weeks; w++) {
     for (const dayId of PLAN.order) {
-      if (!sessionsFor(dayId, w).length) return { dayId, week: w };
+      if (!effDone(dayId, w).length) return { dayId, week: w };
     }
   }
   return null;
@@ -703,7 +729,8 @@ function exportPayload() {
     version: 1,
     exportedAt: new Date().toISOString(),
     sessions: store.sessions,
-    settings: store.settings
+    settings: store.settings,
+    program: store.program
   }, null, 2);
 }
 
@@ -739,6 +766,7 @@ function stageImport(text) {
     );
     pendingImport = {
       sessions,
+      program: (data.program && typeof data.program === "object") ? data.program : null,
       exportedAt: data.exportedAt || null,
       count: sessions.length
     };
@@ -753,9 +781,15 @@ function stageImport(text) {
 function applyImport(mode) {
   if (!pendingImport) return;
   const incoming = pendingImport.sessions;
+  const incP = pendingImport.program;
   if (mode === "replace") {
     store.sessions = incoming;
+    store.program = Object.assign({ restartWeek: null, restartAt: null }, incP || {});
   } else {
+    // sloučení: návrat v programu vyhrává ten novější
+    if (incP && String(incP.restartAt || "") > String((store.program || {}).restartAt || "")) {
+      store.program = Object.assign({ restartWeek: null, restartAt: null }, incP);
+    }
     const byId = new Map(store.sessions.map(s => [s.id, s]));
     for (const s of incoming) {
       const cur = byId.get(s.id);
@@ -787,6 +821,7 @@ let editOpen = new Set();     // rozbalené editory sérií v aktuálním tréni
 let warmOpen = null;          // ruční stav rozbalení rozcvičky
 let statsEx = null;           // vybraný cvik ve statistikách
 let modalEx = null;           // otevřený cvik v okně „jak na to“
+let modalReturn = false;      // otevřené okno „návrat v programu“
 
 function parseHash() {
   const h = (location.hash || "#/").replace(/^#/, "");
@@ -810,6 +845,7 @@ function render() {
     if (route !== "workout") editOpen = new Set();
     if (route !== "workout") warmOpen = null;
     modalEx = null;
+    modalReturn = false;
   }
   lastRoute = path;
 
@@ -887,7 +923,7 @@ function render() {
   if (warmDet) warmDet.addEventListener("toggle", e => { warmOpen = e.target.open; });
 
   const modal = document.getElementById("modal");
-  if (modal) modal.innerHTML = modalEx ? vModal(modalEx) : "";
+  if (modal) modal.innerHTML = modalEx ? vModal(modalEx) : (modalReturn ? vReturnModal() : "");
 
   window.scrollTo(0, sameRoute ? scrollY : 0);
   renderTimer();
@@ -918,6 +954,30 @@ function vModal(exId) {
   </div>`;
 }
 
+function vReturnModal() {
+  const p = store.program || {};
+  let chips = "";
+  for (let w = 1; w <= PLAN.weeks; w++) {
+    chips += `<button class="wchip ${p.restartWeek === w ? "sel" : ""}" data-act="return-set" data-week="${w}">
+      <span class="wk">T${w}</span></button>`;
+  }
+  const active = restartActive()
+    ? `<p class="hint" style="margin-top:12px">✅ Aktivní: program pokračuje od týdne <b>T${p.restartWeek}</b>. Starší záznamy zůstávají v historii a statistikách.</p>
+       <button class="btn danger block" style="margin-top:8px" data-act="return-cancel">Zrušit návrat (jet dál podle historie)</button>`
+    : "";
+  return `<div class="modal-back" data-act="return-close">
+    <div class="modal" data-act="noop">
+      <div class="row" style="margin-bottom:6px">
+        <h2 class="grow" style="margin:0;font-size:17.5px">↩ Návrat v programu</h2>
+        <button class="mclose" data-act="return-close" aria-label="Zavřít">✕</button>
+      </div>
+      <p class="hint">Po nemoci nebo dovolené se vyplatí vrátit o pár týdnů zpět. Vyber týden, od kterého chceš pokračovat – appka ti od něj začne tréninky nabízet znovu (A1 → B → A2), i když už byly jednou odcvičené.</p>
+      <div class="weekchips" style="flex-wrap:wrap;overflow:visible;margin-top:10px">${chips}</div>
+      ${active}
+    </div>
+  </div>`;
+}
+
 function activeBanner() {
   if (!store.activeId) return "";
   const s = getSession(store.activeId);
@@ -934,8 +994,23 @@ function activeBanner() {
 
 function vHome() {
   const sug = suggestion();
-  const totalDone = new Set(doneSessions().map(s => `${s.dayId}|${s.week}`)).size;
-  const totalAll = PLAN.weeks * PLAN.order.length;
+  const startW = programStartWeek();
+
+  let totalDone, totalAll, doneLine;
+  if (restartActive()) {
+    totalAll = (PLAN.weeks - startW + 1) * PLAN.order.length;
+    totalDone = 0;
+    for (let w = startW; w <= PLAN.weeks; w++) {
+      for (const dayId of PLAN.order) if (effDone(dayId, w).length) totalDone++;
+    }
+    doneLine = `Dokončeno ${totalDone} z ${totalAll} · ↩ od návratu na T${startW}`;
+  } else {
+    totalDone = new Set(doneSessions().map(s => `${s.dayId}|${s.week}`)).size;
+    totalAll = PLAN.weeks * PLAN.order.length;
+    doneLine = `Dokončeno ${totalDone} z ${totalAll} tréninků programu`;
+  }
+  const returnLink = `<p class="center" style="margin:10px 0 0">
+    <button class="linkbtn" data-act="return-open">↩ Vrátit se v programu (nemoc / dovolená)</button></p>`;
 
   let nextCard;
   if (sug) {
@@ -943,17 +1018,19 @@ function vHome() {
     nextCard = `<div class="card next-card">
       <div class="next-label">Na řadě</div>
       <p class="next-name">${esc(day.name)} · Týden ${sug.week}</p>
-      <p class="hint" style="margin:0 0 12px">Dokončeno ${totalDone} z ${totalAll} tréninků programu</p>
+      <p class="hint" style="margin:0 0 12px">${esc(doneLine)}</p>
       <button class="btn primary block" style="margin-bottom:8px" data-act="start" data-day="${day.id}" data-week="${sug.week}">Začít trénink</button>
       <div class="row">
         <button class="btn guided grow" data-act="start-guided" data-day="${day.id}" data-week="${sug.week}">▶ Řízený trénink</button>
         <a class="btn" href="#/day/${day.id}?w=${sug.week}">Detail</a>
       </div>
+      ${returnLink}
     </div>`;
   } else {
     nextCard = `<div class="card next-card center">
       <p class="next-name">🎉 Program dokončen!</p>
-      <p class="hint">Všech ${totalAll} tréninků máš za sebou. Můžeš jet kterýkoli den znovu.</p>
+      <p class="hint">${restartActive() ? `Všechny tréninky od návratu na T${startW} máš za sebou.` : `Všech ${totalAll} tréninků máš za sebou.`} Přes návrat v programu můžeš jet znovu od libovolného týdne.</p>
+      ${returnLink}
     </div>`;
   }
 
@@ -1380,6 +1457,7 @@ function vStats() {
     gridRows += `<tr><td class="wk">T${w}</td>${cells}</tr>`;
   }
   const grid = `<div class="card"><h2>Přehled programu</h2>
+    ${restartActive() ? `<p class="hint small" style="margin:0 0 8px">↩ Program vrácen na týden T${store.program.restartWeek} – starší záznamy v mřížce zůstávají.</p>` : ""}
     <table class="progtable">
       <tr><th></th>${PLAN.order.map(d => `<th>${d}</th>`).join("")}</tr>
       ${gridRows}
@@ -1488,6 +1566,13 @@ function vMore() {
     </div>
 
     <div class="card">
+      <h2>↩ Návrat v programu</h2>
+      <p class="hint">Po nemoci či dovolené se můžeš vrátit na dřívější týden – tréninky se od něj začnou nabízet znovu, historie zůstane.</p>
+      ${restartActive() ? `<p class="hint">✅ Aktivní: pokračuješ od týdne <b>T${store.program.restartWeek}</b>.</p>` : ""}
+      <button class="btn block" style="margin-top:10px" data-act="return-open">Vybrat týden návratu</button>
+    </div>
+
+    <div class="card">
       <h2>🎨 Vzhled</h2>
       <div class="seg">
         <button class="${t === "auto" ? "sel" : ""}" data-act="theme" data-v="auto">Auto</button>
@@ -1573,6 +1658,27 @@ document.addEventListener("click", e => {
       break;
     }
     case "exinfo-close": modalEx = null; render(); break;
+    case "return-open": modalReturn = true; render(); break;
+    case "return-close": modalReturn = false; render(); break;
+    case "return-set": {
+      const w = +d.week;
+      if (confirm(`Vrátit program na týden ${w}? Tréninky se budou znovu nabízet od T${w} (historie zůstává).`)) {
+        store.program = { restartWeek: w, restartAt: new Date().toISOString() };
+        saveStore();
+        modalReturn = false;
+        showToast(`↩ Pokračuješ od týdne ${w}`);
+        render();
+      }
+      break;
+    }
+    case "return-cancel": {
+      store.program = { restartWeek: null, restartAt: null };
+      saveStore();
+      modalReturn = false;
+      showToast("Návrat zrušen – jede se dál podle historie");
+      render();
+      break;
+    }
     case "guided": startGuided(d.sid); break;
     case "g-next": ensureAudio(); advanceGuided(); break;
     case "g-back": ensureAudio(); backGuided(); break;
