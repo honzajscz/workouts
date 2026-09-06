@@ -380,3 +380,107 @@ const PLAN = {
     }
   ]
 };
+
+/* =========================================================
+   Hormonální jógová terapie pro muže dle Dinah Rodrigues
+   Přepis z fotky cvičebního listu včetně ručních poznámek.
+   ---------------------------------------------------------
+   Zkratky:
+     B    – bhastriká (rychlé břišní dechy), 7×B = 7 dechů
+     CV   – cirkulace energie do varlat
+     CS   – cirkulace do štítné žlázy
+     CSH  – cirkulace do hypofýzy a štítné žlázy
+   Cvičí se vlastním tempem – aplikace nepočítá čas, postupuje
+   se ťuknutím po dokončení zadaného počtu dechů.
+   ========================================================= */
+
+const YOGA = {
+  title: "Hormonální jóga",
+  subtitle: "Sestava dle Dinah Rodrigues (pro muže)",
+
+  legend: [
+    "B – bhastriká: rychlé dechy břichem. „7×B“ = 7 dechů, „2×15B“ = dvě kola po 15 dechách.",
+    "CV – cirkulace energie do varlat (po dechách vydechnout a poslat energii dolů).",
+    "CS – cirkulace energie do štítné žlázy.",
+    "CSH – cirkulace energie do hypofýzy a štítné žlázy.",
+    "Sestava se cvičí vlastním tempem – nejlépe ráno nalačno.",
+    "Zahřívací cvičení se dělá před denní sestavou."
+  ],
+
+  sections: [
+    {
+      id: "warm",
+      name: "Zahřívací cvičení",
+      icon: "🔥",
+      items: [
+        { id: "w1", name: "Protažení ramen", reps: "7×B",
+          note: "pohyb sladit s dechem – nádech / výdech",
+          howto: ["Ramena krouží vzad a vpřed v rytmu bhastriky.", "Záda rovná, hlava v prodloužení páteře."] },
+        { id: "w2", name: "Úklony do stran", reps: "7×B",
+          note: "úklon veď od pasu",
+          howto: ["Úklon jde od pasu, pánev zůstává na místě.", "Na každou stranu 7 dechů."] },
+        { id: "w3", name: "Samba", reps: "7×B",
+          howto: ["Uvolněné pohupování boky do stran.", "Dech vede rytmus."] },
+        { id: "w4", name: "Protažení nohou v lehu", reps: "3× na každou stranu",
+          howto: ["V lehu přitáhni koleno a natáhni nohu vzhůru.", "Střídej strany, 3× na každou."] },
+        { id: "w5", name: "Poletující vlasy", reps: "7×B",
+          note: "v předklonu",
+          howto: ["V předklonu volně rozhoď vlasy / hlavu.", "Krk uvolněný, nekruť násilím."] },
+        { id: "w6", name: "Sedící kočka", reps: "7×B",
+          note: "nádech prohnutí, výdech vyhrbení",
+          howto: ["V sedu střídej prohnutí hrudníku (nádech) a vyhrbení zad (výdech)."] },
+        { id: "w7", name: "Cvik pro kyčle", reps: "2×",
+          note: "pokládání nohou dovnitř a ven",
+          howto: ["Vleže pokládej pokrčené nohy dovnitř a ven.", "Kyčle se rozhýbou, pánev zůstává v klidu."] }
+      ]
+    },
+    {
+      id: "main",
+      name: "Denní sestava hormonální jógy",
+      icon: "🧘",
+      items: [
+        { id: "y1", n: 1, name: "Ardha supta virásana", reps: "2×B", circ: "CV",
+          howto: ["Polovina ležícího hrdiny – jedna noha pokrčená vedle boku.", "Po dechách pošli energii do varlat (CV)."] },
+        { id: "y2", n: 2, name: "Mahásana", reps: "7×B", circ: "CV",
+          note: "palce do pěstí, hlava stále rovně; pravá / levá, pata 3×",
+          howto: ["Palce zavři do pěstí, hlava zůstává rovně.", "Střídej pravou a levou stranu, patu 3×.", "Zakonči cirkulací do varlat (CV)."] },
+        { id: "y3", n: 3, name: "Mandukásana", reps: "7×B", circ: "CV",
+          note: "ruce od sebe, výdech – nádech",
+          howto: ["Pozice žáby, ruce od sebe.", "Dech: výdech – nádech, pak cirkulace do varlat."] },
+        { id: "y4", n: 4, name: "Agnisahar – čistící krije", reps: "2×", circ: "CS",
+          note: "nádech, zádrž a vlnění břichem; poté cirkulace",
+          howto: ["Nádech, výdech a zádrž – rozvlň břicho (agnisár).", "Zopakuj 2×, zakonči cirkulací do štítné žlázy."] },
+        { id: "y5", n: 5, name: "Paršvottanásana", reps: "7×B", circ: "CV",
+          note: "záklon – nádech, předklon – CV",
+          howto: ["Ze záklonu (nádech) přejdi do předklonu nad přední nohu.", "V předklonu pošli energii do varlat.", "Vystřídej obě strany."] },
+        { id: "y6", n: 6, name: "Energie pro stimulaci hormonů", reps: "2×15B", circ: "CV",
+          note: "palce do dlaní, ruce do podkolení",
+          howto: ["Palce zavři do dlaní, ruce opři do podkolení.", "Dvě kola po 15 dechách, pak cirkulace do varlat."] },
+        { id: "y7", n: 7, name: "Kopání do hýždí", reps: "2×15B", circ: "CV",
+          howto: ["Vleže na břiše střídavě kopej patami k hýždím.", "Dvě kola po 15 dechách, zakonči cirkulací do varlat."] },
+        { id: "y8", n: 8, name: "Čištění nádis", reps: "3×",
+          note: "střídavé dýchání nosními dírkami",
+          howto: ["Střídavý dech – levá a pravá nosní dírka.", "Tři kola v klidném tempu."] },
+        { id: "y9", n: 9, name: "Dynamická vilomásana", reps: "1×7×B", circ: "CSH",
+          howto: ["Dynamické provedení vilomásany.", "Jedno kolo 7 dechů, pak cirkulace do hypofýzy a štítné žlázy."] },
+        { id: "y10", n: 10, name: "Džánušíršásana", reps: "2×7×3", circ: "CV",
+          howto: ["Předklon k natažené noze, druhá pokrčená.", "Dvě kola, střídej strany, zakonči cirkulací do varlat."] },
+        { id: "y11", n: 11, name: "Súrja bhédana v protažení s uddijána bandhou", reps: "3×",
+          howto: ["Nádech pravou nosní dírkou (súrja bhédana).", "Po výdechu vtáhni břicho pod žebra – uddijána bandha.", "Celkem 3 kola."] },
+        { id: "y12", n: 12, name: "Tři bandhy", reps: "7×B", circ: "CV",
+          note: "„jablíčko“ CS + podtlak 3×",
+          howto: ["Zapoj postupně tři zámky: pánevní dno, břicho, hlavu.", "Podtlak („jablíčko“) 3×, cirkulace do štítné žlázy i varlat."] },
+        { id: "y13", n: 13, name: "Baddhakonásana", reps: "7×B, CV · 2×7×B, CSH", circ: "CSH",
+          howto: ["Sed s chodidly u sebe, kolena k zemi.", "Nejdřív 7 dechů s cirkulací do varlat.", "Pak dvě kola po 7 dechách s cirkulací do hypofýzy a štítné žlázy."] },
+        { id: "y14", n: 14, name: "Dynamická viparita", reps: "2×15B · 1×7×B", circ: "CSH",
+          howto: ["Obrácená pozice (nohy nahoru) v dynamickém provedení.", "Dvě kola po 15 dechách, pak jedno kolo 7 dechů.", "Cirkulace do hypofýzy a štítné žlázy."] },
+        { id: "y15", n: 15, name: "Harmonizace energie – čištění nádis v nohách", reps: "2×7×3", circ: "CV",
+          note: "s protažením nohou, ruce k hlavě",
+          howto: ["Střídavý dech se současným protažením nohou.", "Nádech – ruce k hlavě, výdech – uvolnit.", "Zakonči cirkulací do varlat."] },
+        { id: "y16", n: 16, name: "Jóga nidrá dvou pólů a sedmi čaker", reps: "závěr",
+          note: "relaxace na konec sestavy",
+          howto: ["Lehni si a projdi pozornost dvěma póly a sedmi čakrami.", "Nech tělo zcela uvolnit – nikam nespěchej."] }
+      ]
+    }
+  ]
+};

@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -16,7 +16,8 @@ const store = {
   sessions: [],                       // všechny tréninky (aktivní i dokončené)
   settings: Object.assign({}, DEFAULT_SETTINGS),
   activeId: null,                     // id rozdělaného tréninku
-  program: { restartWeek: null, restartAt: null }  // návrat v programu (nemoc/dovolená)
+  program: { restartWeek: null, restartAt: null },  // návrat v programu (nemoc/dovolená)
+  yoga: []                            // záznamy hormonální jógy (vlastní historie)
 };
 
 function loadStore() {
@@ -35,6 +36,7 @@ function loadStore() {
     if (data.program && typeof data.program === "object") {
       store.program = Object.assign({ restartWeek: null, restartAt: null }, data.program);
     }
+    if (Array.isArray(data.yoga)) store.yoga = data.yoga;
   } catch (err) {
     console.error("Nepodařilo se načíst uložená data:", err);
   }
@@ -730,7 +732,8 @@ function exportPayload() {
     exportedAt: new Date().toISOString(),
     sessions: store.sessions,
     settings: store.settings,
-    program: store.program
+    program: store.program,
+    yoga: store.yoga
   }, null, 2);
 }
 
@@ -767,6 +770,7 @@ function stageImport(text) {
     pendingImport = {
       sessions,
       program: (data.program && typeof data.program === "object") ? data.program : null,
+      yoga: Array.isArray(data.yoga) ? data.yoga.filter(y => y && typeof y.id === "string") : [],
       exportedAt: data.exportedAt || null,
       count: sessions.length
     };
@@ -782,9 +786,11 @@ function applyImport(mode) {
   if (!pendingImport) return;
   const incoming = pendingImport.sessions;
   const incP = pendingImport.program;
+  const incY = pendingImport.yoga || [];
   if (mode === "replace") {
     store.sessions = incoming;
     store.program = Object.assign({ restartWeek: null, restartAt: null }, incP || {});
+    store.yoga = incY;
   } else {
     // sloučení: návrat v programu vyhrává ten novější
     if (incP && String(incP.restartAt || "") > String((store.program || {}).restartAt || "")) {
@@ -796,6 +802,12 @@ function applyImport(mode) {
       if (!cur || String(s.updatedAt || "") > String(cur.updatedAt || "")) byId.set(s.id, s);
     }
     store.sessions = [...byId.values()];
+    const byYid = new Map(store.yoga.map(y => [y.id, y]));
+    for (const y of incY) {
+      const cur = byYid.get(y.id);
+      if (!cur || String(y.updatedAt || "") > String(cur.updatedAt || "")) byYid.set(y.id, y);
+    }
+    store.yoga = [...byYid.values()];
   }
   const active = store.sessions.find(s => s.status === "active");
   store.activeId = active ? active.id : null;
@@ -822,6 +834,7 @@ let warmOpen = null;          // ruční stav rozbalení rozcvičky
 let statsEx = null;           // vybraný cvik ve statistikách
 let modalEx = null;           // otevřený cvik v okně „jak na to“
 let modalReturn = false;      // otevřené okno „návrat v programu“
+let yogaListOpen = false;     // rozbalený seznam všech pozic při cvičení
 
 function parseHash() {
   const h = (location.hash || "#/").replace(/^#/, "");
@@ -893,6 +906,24 @@ function render() {
     const sess = getSession(parts[1]);
     header = { title: `${getDay(sess.dayId).name}`, sub: `Týden ${sess.week} · ${fmtFull(sess.date)}`, back: "#/history" };
     html = vSession(sess);
+  } else if (route === "yoga") {
+    tab = "yoga";
+    header = { title: YOGA.title, sub: YOGA.subtitle, back: null };
+    html = vYoga();
+  } else if (route === "yogarun" && getYoga(parts[1])) {
+    const y = getYoga(parts[1]);
+    tab = "yoga";
+    header = {
+      title: "Hormonální jóga",
+      sub: `${yogaDoneCount(y)}/${yogaTotalCount()} pozic · ${fmtFull(y.date)}`,
+      back: "#/yoga"
+    };
+    html = vYogaRun(y);
+  } else if (route === "yogasess" && getYoga(parts[1])) {
+    const y = getYoga(parts[1]);
+    tab = "yoga";
+    header = { title: "Záznam jógy", sub: fmtFull(y.date), back: "#/yoga" };
+    html = vYogaSession(y);
   } else if (route === "stats") {
     tab = "stats";
     header = { title: "Statistiky", sub: "Tvůj progres v programu", back: null };
@@ -1658,6 +1689,15 @@ document.addEventListener("click", e => {
       break;
     }
     case "exinfo-close": modalEx = null; render(); break;
+    case "yoga-start": startYoga(); break;
+    case "yoga-step": setYogaStep(d.sid, +d.i); break;
+    case "yoga-toggle": toggleYogaItem(d.sid, d.item); break;
+    case "yoga-next": yogaNext(d.sid); break;
+    case "yoga-back": yogaBack(d.sid); break;
+    case "yoga-finish": finishYoga(d.sid); break;
+    case "yoga-cancel": cancelYoga(d.sid); break;
+    case "yoga-del": deleteYoga(d.sid); break;
+    case "yoga-list": yogaListOpen = !yogaListOpen; render(); break;
     case "return-open": modalReturn = true; render(); break;
     case "return-close": modalReturn = false; render(); break;
     case "return-set": {
@@ -1768,6 +1808,16 @@ document.addEventListener("change", e => {
       break;
     }
     case "stats-ex": statsEx = el.value; render(); break;
+    case "yoga-note": {
+      const y = getYoga(d.sid);
+      if (y) { y.note = el.value.trim(); touchYoga(y); }
+      break;
+    }
+    case "yoga-date": {
+      const y = getYoga(d.sid);
+      if (y && el.value) { y.date = el.value; touchYoga(y); render(); }
+      break;
+    }
     case "import-file": {
       const f = el.files && el.files[0];
       if (!f) break;
@@ -1794,3 +1844,335 @@ if (navigator.storage && navigator.storage.persist) {
 window.addEventListener("hashchange", render);
 if (!location.hash) location.replace("#/");
 render();
+
+/* =========================================================
+   Hormonální jóga – vlastní záložka a vlastní historie
+   Cvičí se vlastním tempem: aplikace nepočítá čas, po dokončení
+   zadaného počtu dechů se ťukne na „Hotovo“ a jede se dál.
+   ========================================================= */
+
+function yogaItems() {
+  const out = [];
+  for (const sec of YOGA.sections) {
+    for (const it of sec.items) out.push(Object.assign({ section: sec }, it));
+  }
+  return out;
+}
+
+function yogaTotalCount() { return yogaItems().length; }
+
+function getYoga(id) { return store.yoga.find(y => y.id === id) || null; }
+
+function touchYoga(y) { y.updatedAt = new Date().toISOString(); saveStore(); }
+
+function yogaDoneCount(y) { return Object.values(y.done || {}).filter(Boolean).length; }
+
+function doneYogaSessions() {
+  return store.yoga
+    .filter(y => y.status === "done")
+    .sort((a, b) => (a.date === b.date)
+      ? String(a.updatedAt).localeCompare(String(b.updatedAt))
+      : String(a.date).localeCompare(String(b.date)));
+}
+
+function activeYoga() {
+  return store.yoga.find(y => y.status === "active") || null;
+}
+
+function circLabel(c) {
+  return { CV: "CV · varlata", CS: "CS · štítná žláza", CSH: "CSH · hypofýza + štítná žláza" }[c] || "";
+}
+
+function circSpeak(c) {
+  return { CV: "cirkulace do varlat", CS: "cirkulace do štítné žlázy",
+           CSH: "cirkulace do hypofýzy a štítné žlázy" }[c] || "";
+}
+
+function startYoga() {
+  const act = activeYoga();
+  if (act) { location.hash = "#/yogarun/" + act.id; return; }
+  const y = {
+    id: "y" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    date: todayISO(),
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: "active",
+    step: 0,
+    done: {},
+    note: "",
+    updatedAt: new Date().toISOString()
+  };
+  store.yoga.push(y);
+  saveStore();
+  ensureAudio();
+  requestWake();
+  announceYoga(y);
+  location.hash = "#/yogarun/" + y.id;
+}
+
+function announceYoga(y) {
+  const items = yogaItems();
+  const it = items[y.step];
+  if (!it) return;
+  let text = it.name + ".";
+  if (it.reps) text += ` ${it.reps.replace(/×/g, " krát ").replace(/B/g, "bhastriky")}.`;
+  if (it.circ) text += ` Pak ${circSpeak(it.circ)}.`;
+  speak(text);
+}
+
+function setYogaStep(sid, i) {
+  const y = getYoga(sid);
+  if (!y) return;
+  y.step = Math.max(0, Math.min(yogaTotalCount() - 1, i));
+  yogaListOpen = false;
+  touchYoga(y);
+  announceYoga(y);
+  render();
+}
+
+function toggleYogaItem(sid, itemId) {
+  const y = getYoga(sid);
+  if (!y) return;
+  y.done[itemId] = !y.done[itemId];
+  touchYoga(y);
+  render();
+}
+
+function yogaNext(sid) {
+  const y = getYoga(sid);
+  if (!y) return;
+  const items = yogaItems();
+  const it = items[y.step];
+  if (it) y.done[it.id] = true;
+  ensureAudio();
+  if (y.step >= items.length - 1) {
+    soundDone();
+    speak("Sestava hotová. Namasté!");
+    touchYoga(y);
+    render();
+    return;
+  }
+  y.step++;
+  soundWork();
+  touchYoga(y);
+  announceYoga(y);
+  render();
+}
+
+function yogaBack(sid) {
+  const y = getYoga(sid);
+  if (!y || y.step <= 0) return;
+  y.step--;
+  const it = yogaItems()[y.step];
+  if (it) y.done[it.id] = false;
+  ensureAudio();
+  touchYoga(y);
+  announceYoga(y);
+  render();
+}
+
+function finishYoga(sid) {
+  const y = getYoga(sid);
+  if (!y) return;
+  if (yogaDoneCount(y) === 0 && !confirm("Nemáš odškrtnutou žádnou pozici. Opravdu uložit?")) return;
+  y.status = "done";
+  y.finishedAt = new Date().toISOString();
+  touchYoga(y);
+  releaseWake();
+  showToast("Jóga uložena 🧘");
+  location.hash = "#/yogasess/" + y.id;
+}
+
+function cancelYoga(sid) {
+  if (!confirm("Zrušit rozcvičenou sestavu a smazat záznam?")) return;
+  store.yoga = store.yoga.filter(y => y.id !== sid);
+  saveStore();
+  releaseWake();
+  location.hash = "#/yoga";
+}
+
+function deleteYoga(sid) {
+  if (!confirm("Opravdu smazat tento záznam jógy?")) return;
+  store.yoga = store.yoga.filter(y => y.id !== sid);
+  saveStore();
+  showToast("Záznam smazán");
+  location.hash = "#/yoga";
+}
+
+/* ---- pohledy jógy ---- */
+
+function yogaStreak() {
+  const days = [...new Set(doneYogaSessions().map(y => y.date))].sort().reverse();
+  if (!days.length) return 0;
+  const d0 = dateFromISO(days[0]);
+  const today = dateFromISO(todayISO());
+  const diff = Math.round((today - d0) / 86400000);
+  if (diff > 1) return 0;
+  let streak = 1;
+  for (let i = 1; i < days.length; i++) {
+    const gap = Math.round((dateFromISO(days[i - 1]) - dateFromISO(days[i])) / 86400000);
+    if (gap === 1) streak++;
+    else break;
+  }
+  return streak;
+}
+
+function vYoga() {
+  const list = doneYogaSessions();
+  const act = activeYoga();
+  const monday = mondayOf(new Date());
+  const thisWeek = list.filter(y => dateFromISO(y.date) >= monday).length;
+  const last = list.length ? list[list.length - 1] : null;
+  const doneToday = list.some(y => y.date === todayISO());
+
+  const banner = act ? `<div class="banner" data-act="nav" data-href="#/yogarun/${act.id}">
+      <div class="grow">
+        <div class="t">▶ Pokračovat v sestavě</div>
+        <div class="s">Hotovo ${yogaDoneCount(act)}/${yogaTotalCount()} pozic</div>
+      </div><span class="chev">›</span>
+    </div>` : "";
+
+  const startCard = `<div class="card next-card">
+    <div class="next-label">${doneToday ? "Dnes hotovo ✓" : "Denní sestava"}</div>
+    <p class="next-name">${esc(YOGA.title)}</p>
+    <p class="hint" style="margin:0 0 12px">${yogaTotalCount()} pozic · ${esc(YOGA.subtitle)}</p>
+    <button class="btn primary block" data-act="yoga-start">${act ? "▶ Pokračovat" : "▶ Začít sestavu"}</button>
+  </div>`;
+
+  const stats = `<div class="statgrid">
+    <div class="stat"><div class="v">${list.length}</div><div class="l">sestav celkem</div></div>
+    <div class="stat"><div class="v">${thisWeek}</div><div class="l">tento týden</div></div>
+    <div class="stat"><div class="v">${yogaStreak()}</div><div class="l">dní v řadě</div></div>
+    <div class="stat"><div class="v">${last ? esc(fmtShort(last.date)) : "–"}</div><div class="l">naposledy</div></div>
+  </div>`;
+
+  const sections = YOGA.sections.map(sec => `<details class="warm">
+      <summary>${sec.icon} ${esc(sec.name)} <span class="cnt">${sec.items.length}</span></summary>
+      <div class="witems">
+        ${sec.items.map(it => `<div class="witem" style="cursor:default;align-items:flex-start">
+          <div class="grow">
+            <div class="n">${it.n ? it.n + ". " : ""}${esc(it.name)}</div>
+            ${it.note ? `<div class="note">${esc(it.note)}</div>` : ""}
+          </div>
+          <div style="text-align:right;flex:0 0 auto">
+            ${it.reps ? `<span class="badge">${esc(it.reps)}</span>` : ""}
+            ${it.circ ? `<span class="badge ss">${esc(it.circ)}</span>` : ""}
+          </div>
+        </div>`).join("")}
+      </div>
+    </details>`).join("");
+
+  const hist = list.length
+    ? `<div class="section-title">Historie jógy</div>` + list.slice().reverse().slice(0, 20).map(y =>
+        `<div class="histitem" data-act="nav" data-href="#/yogasess/${y.id}">
+          <span class="badge day" data-day="A2">🧘</span>
+          <div class="grow">
+            <div class="when">${esc(fmtFull(y.date))}</div>
+            <div class="meta">${yogaDoneCount(y)}/${yogaTotalCount()} pozic${y.note ? " · 📝" : ""}</div>
+          </div><span class="chev">›</span>
+        </div>`).join("")
+    : `<p class="hint center" style="margin-top:16px">Zatím žádný záznam – po první sestavě se tu objeví historie.</p>`;
+
+  const legend = `<div class="card"><h2>ℹ️ Zkratky a poznámky</h2>
+    <ul class="legend">${YOGA.legend.map(l => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+
+  return banner + startCard + stats +
+    `<div class="section-title">Sestava</div>${sections}` + hist + `<div style="height:10px"></div>` + legend;
+}
+
+function vYogaRun(y) {
+  const items = yogaItems();
+  const total = items.length;
+  const idx = Math.max(0, Math.min(total - 1, y.step));
+  const it = items[idx];
+  const next = items[idx + 1] || null;
+  const done = yogaDoneCount(y);
+  const allDone = done >= total;
+
+  if (yogaListOpen) {
+    return `<div class="card"><h2>Přeskočit na pozici</h2>
+      ${items.map((x, i) => `<div class="witem ${y.done[x.id] ? "done" : ""}" data-act="yoga-step" data-sid="${y.id}" data-i="${i}">
+          <div class="chk">✓</div>
+          <div class="grow"><div class="n">${x.n ? x.n + ". " : ""}${esc(x.name)}</div>
+            <div class="note">${esc(x.section.name)}${x.reps ? " · " + esc(x.reps) : ""}</div></div>
+          ${i === idx ? `<span class="badge ss">teď</span>` : ""}
+        </div>`).join("")}
+      <button class="btn block" style="margin-top:12px" data-act="yoga-list">Zavřít seznam</button>
+    </div>`;
+  }
+
+  const segs = items.map((x, i) =>
+    `<i class="seg${y.done[x.id] ? " done" : ""}${i === idx ? " cur" : ""}${x.section.id === "warm" && items[i + 1] && items[i + 1].section.id !== "warm" ? " rend" : ""}"></i>`
+  ).join("");
+
+  const finishCard = allDone
+    ? `<div class="card center" style="margin-top:14px">
+        <div style="font-size:44px">🙏</div>
+        <p style="font-weight:800;margin:6px 0 2px">Sestava hotová</p>
+        <p class="hint" style="margin:0 0 12px">Namasté – ${done} z ${total} pozic</p>
+        <button class="btn primary block" data-act="yoga-finish" data-sid="${y.id}">✓ Uložit sestavu</button>
+      </div>`
+    : "";
+
+  return `<div class="guided">
+    <div class="g-phase work">${esc(it.section.icon + " " + it.section.name.toUpperCase())}</div>
+    <div class="ypose">
+      <div class="ynum">${it.n ? it.n : "•"}</div>
+      <h2 class="g-ex" style="margin-top:8px">${esc(it.name)}</h2>
+      <div class="ybadges">
+        ${it.reps ? `<span class="badge big">${esc(it.reps)}</span>` : ""}
+        ${it.circ ? `<span class="badge big ss">${esc(circLabel(it.circ))}</span>` : ""}
+      </div>
+      ${it.note ? `<div class="g-set" style="margin-top:8px">${esc(it.note)}</div>` : ""}
+      ${it.howto ? `<ul class="howto yhowto">${it.howto.map(h => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+    </div>
+    ${next ? `<div class="g-next">Pak: ${next.n ? next.n + ". " : ""}${esc(next.name)}${next.reps ? ` · ${esc(next.reps)}` : ""}</div>`
+           : `<div class="g-next">Poslední pozice 🙏</div>`}
+    <div class="g-progwrap">
+      <div class="g-prog">${segs}</div>
+      <div class="g-progtxt muted small">${done}/${total} pozic hotovo</div>
+    </div>
+    <div class="g-controls">
+      <button class="gbtn" data-act="yoga-back" data-sid="${y.id}" title="Zpět">◀</button>
+      <button class="gbtn main" data-act="yoga-next" data-sid="${y.id}">${idx >= total - 1 ? "✓ Dokončit" : "✓ Hotovo, dál"}</button>
+      <button class="gbtn" data-act="yoga-list" title="Seznam pozic">☰</button>
+    </div>
+    <div class="g-meta">
+      <button class="linkbtn" data-act="toggle-voice">${store.settings.voice ? "🔊 hlas" : "🔇 hlas"}</button>
+      <button class="linkbtn" data-act="toggle-sound">${store.settings.sound ? "🔔 zvuk" : "🔕 zvuk"}</button>
+    </div>
+    ${finishCard}
+    <div class="card" style="margin-top:14px;text-align:left">
+      <label class="muted small">Poznámka k sestavě</label>
+      <textarea data-in="yoga-note" data-sid="${y.id}" placeholder="jak to šlo…">${esc(y.note)}</textarea>
+      ${allDone ? "" : `<button class="btn primary block" style="margin-top:10px" data-act="yoga-finish" data-sid="${y.id}">✓ Uložit a ukončit</button>`}
+      <p class="center" style="margin:10px 0 0">
+        <button class="linkbtn" style="color:var(--danger)" data-act="yoga-cancel" data-sid="${y.id}">Zrušit a smazat záznam</button>
+      </p>
+    </div>
+  </div>`;
+}
+
+function vYogaSession(y) {
+  const items = yogaItems();
+  const rows = YOGA.sections.map(sec => `<div class="sess-ex">
+      <div class="n">${sec.icon} ${esc(sec.name)}</div>
+      <div class="vals">${sec.items.map(it =>
+        `${y.done[it.id] ? "✓" : "✗"} ${esc(it.name)}`).join(" · ")}</div>
+    </div>`).join("");
+
+  return `<div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <span class="badge day" data-day="A2">🧘</span>
+        <b class="grow">${esc(YOGA.title)}</b>
+        <span class="badge">${yogaDoneCount(y)}/${items.length}</span>
+      </div>
+      <div class="row">
+        <label class="muted small" style="flex:0 0 auto">Datum</label>
+        <input type="date" value="${esc(y.date)}" data-in="yoga-date" data-sid="${y.id}" style="flex:1">
+      </div>
+      ${y.note ? `<hr class="sep"><div>📝 ${esc(y.note)}</div>` : ""}
+    </div>
+    <div class="card">${rows}</div>
+    <button class="btn danger block" data-act="yoga-del" data-sid="${y.id}">Smazat záznam</button>`;
+}

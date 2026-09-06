@@ -954,3 +954,45 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 
 ul.howto { margin: 6px 0 0; padding-left: 20px; }
 ul.howto li { margin-bottom: 8px; font-size: 14.5px; line-height: 1.5; }
+
+/* ---------- hormonální jóga ---------- */
+
+.ypose { margin-top: 6px; }
+
+.ynum {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--card-2);
+  border: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.ybadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.badge.big { font-size: 13px; padding: 5px 13px; }
+
+ul.howto.yhowto {
+  text-align: left;
+  margin: 14px auto 0;
+  max-width: 420px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px 12px 32px;
+}
+ul.howto.yhowto li { font-size: 14px; margin-bottom: 6px; }
+ul.howto.yhowto li:last-child { margin-bottom: 0; }
+
+/* pět záložek se musí vejít na úzký displej */
+.tabbar a { max-width: 110px; font-size: 10.5px; }
+.tabbar a .ico { font-size: 19px; }
