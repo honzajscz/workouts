@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -1854,7 +1854,7 @@ render();
 function yogaItems() {
   const out = [];
   for (const sec of YOGA.sections) {
-    for (const it of sec.items) out.push(Object.assign({ section: sec }, it));
+    sec.items.forEach((it, i) => out.push(Object.assign({ section: sec, no: i + 1 }, it)));
   }
   return out;
 }
@@ -2049,7 +2049,8 @@ function vYoga() {
   const sections = YOGA.sections.map(sec => `<details class="warm">
       <summary>${sec.icon} ${esc(sec.name)} <span class="cnt">${sec.items.length}</span></summary>
       <div class="witems">
-        ${sec.items.map(it => `<div class="witem" style="cursor:default;align-items:flex-start">
+        ${sec.items.map(it => `<div class="witem" style="cursor:default;align-items:center">
+          ${figSvg(it.id, "thumb")}
           <div class="grow">
             <div class="n">${it.n ? it.n + ". " : ""}${esc(it.name)}</div>
             ${it.note ? `<div class="note">${esc(it.note)}</div>` : ""}
@@ -2093,6 +2094,7 @@ function vYogaRun(y) {
     return `<div class="card"><h2>Přeskočit na pozici</h2>
       ${items.map((x, i) => `<div class="witem ${y.done[x.id] ? "done" : ""}" data-act="yoga-step" data-sid="${y.id}" data-i="${i}">
           <div class="chk">✓</div>
+          ${figSvg(x.id, "thumb")}
           <div class="grow"><div class="n">${x.n ? x.n + ". " : ""}${esc(x.name)}</div>
             <div class="note">${esc(x.section.name)}${x.reps ? " · " + esc(x.reps) : ""}</div></div>
           ${i === idx ? `<span class="badge ss">teď</span>` : ""}
@@ -2117,7 +2119,7 @@ function vYogaRun(y) {
   return `<div class="guided">
     <div class="g-phase work">${esc(it.section.icon + " " + it.section.name.toUpperCase())}</div>
     <div class="ypose">
-      <div class="ynum">${it.n ? it.n : "•"}</div>
+      <div class="yfig-big">${figSvg(it.id)}<span class="ynum">${it.n || it.no}</span></div>
       <h2 class="g-ex" style="margin-top:8px">${esc(it.name)}</h2>
       <div class="ybadges">
         ${it.reps ? `<span class="badge big">${esc(it.reps)}</span>` : ""}
@@ -2157,8 +2159,8 @@ function vYogaSession(y) {
   const items = yogaItems();
   const rows = YOGA.sections.map(sec => `<div class="sess-ex">
       <div class="n">${sec.icon} ${esc(sec.name)}</div>
-      <div class="vals">${sec.items.map(it =>
-        `${y.done[it.id] ? "✓" : "✗"} ${esc(it.name)}`).join(" · ")}</div>
+      <div class="yfigrow">${sec.items.map(it =>
+        `<span class="yfigcell ${y.done[it.id] ? "" : "skip"}" title="${esc(it.name)}">${figSvg(it.id, "thumb")}</span>`).join("")}</div>
     </div>`).join("");
 
   return `<div class="card">
