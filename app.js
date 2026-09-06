@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -833,6 +833,7 @@ let editOpen = new Set();     // rozbalené editory sérií v aktuálním tréni
 let warmOpen = null;          // ruční stav rozbalení rozcvičky
 let statsEx = null;           // vybraný cvik ve statistikách
 let modalEx = null;           // otevřený cvik v okně „jak na to“
+let modalPhoto = null;      // fotka pozice otevřená přes celou obrazovku
 let modalReturn = false;      // otevřené okno „návrat v programu“
 let yogaListOpen = false;     // rozbalený seznam všech pozic při cvičení
 
@@ -859,6 +860,7 @@ function render() {
     if (route !== "workout") warmOpen = null;
     modalEx = null;
     modalReturn = false;
+    modalPhoto = null;
   }
   lastRoute = path;
 
@@ -954,7 +956,8 @@ function render() {
   if (warmDet) warmDet.addEventListener("toggle", e => { warmOpen = e.target.open; });
 
   const modal = document.getElementById("modal");
-  if (modal) modal.innerHTML = modalEx ? vModal(modalEx) : (modalReturn ? vReturnModal() : "");
+  if (modal) modal.innerHTML = modalEx ? vModal(modalEx)
+    : (modalReturn ? vReturnModal() : (modalPhoto ? vPhotoModal(modalPhoto) : ""));
 
   window.scrollTo(0, sameRoute ? scrollY : 0);
   renderTimer();
@@ -981,6 +984,21 @@ function vModal(exId) {
       ${items ? `<ul class="howto">${items}</ul>` : `<p class="hint">K tomuhle cviku zatím nemám popis.</p>`}
       ${info.video ? `<a class="btn primary block" style="margin-top:14px" href="${esc(info.video)}" target="_blank" rel="noopener">▶ Video tutoriál</a>` : ""}
       <a class="btn block" style="margin-top:8px" href="${esc(search)}" target="_blank" rel="noopener">🔎 Další videa na YouTube</a>
+    </div>
+  </div>`;
+}
+
+function vPhotoModal(id) {
+  const items = yogaItems();
+  const it = items.find(x => x.id === id);
+  return `<div class="modal-back photo" data-act="yphoto-close">
+    <div class="modal photo" data-act="noop">
+      <div class="row" style="margin-bottom:8px">
+        <b class="grow">${it ? esc((it.n || it.no) + ". " + it.name) : ""}</b>
+        <button class="mclose" data-act="yphoto-close" aria-label="Zavřít">✕</button>
+      </div>
+      ${poseImg(id, "full")}
+      ${it && it.reps ? `<p class="hint center" style="margin:8px 0 0">${esc(it.reps)}${it.circ ? " · " + esc(circLabel(it.circ)) : ""}</p>` : ""}
     </div>
   </div>`;
 }
@@ -1698,6 +1716,8 @@ document.addEventListener("click", e => {
     case "yoga-cancel": cancelYoga(d.sid); break;
     case "yoga-del": deleteYoga(d.sid); break;
     case "yoga-list": yogaListOpen = !yogaListOpen; render(); break;
+    case "yphoto": modalPhoto = d.ex; render(); break;
+    case "yphoto-close": modalPhoto = null; render(); break;
     case "return-open": modalReturn = true; render(); break;
     case "return-close": modalReturn = false; render(); break;
     case "return-set": {
@@ -2050,7 +2070,7 @@ function vYoga() {
       <summary>${sec.icon} ${esc(sec.name)} <span class="cnt">${sec.items.length}</span></summary>
       <div class="witems">
         ${sec.items.map(it => `<div class="witem" style="cursor:default;align-items:center">
-          ${figSvg(it.id, "thumb")}
+          ${poseImg(it.id, "thumb")}
           <div class="grow">
             <div class="n">${it.n ? it.n + ". " : ""}${esc(it.name)}</div>
             ${it.note ? `<div class="note">${esc(it.note)}</div>` : ""}
@@ -2094,7 +2114,7 @@ function vYogaRun(y) {
     return `<div class="card"><h2>Přeskočit na pozici</h2>
       ${items.map((x, i) => `<div class="witem ${y.done[x.id] ? "done" : ""}" data-act="yoga-step" data-sid="${y.id}" data-i="${i}">
           <div class="chk">✓</div>
-          ${figSvg(x.id, "thumb")}
+          ${poseImg(x.id, "thumb")}
           <div class="grow"><div class="n">${x.n ? x.n + ". " : ""}${esc(x.name)}</div>
             <div class="note">${esc(x.section.name)}${x.reps ? " · " + esc(x.reps) : ""}</div></div>
           ${i === idx ? `<span class="badge ss">teď</span>` : ""}
@@ -2119,7 +2139,7 @@ function vYogaRun(y) {
   return `<div class="guided">
     <div class="g-phase work">${esc(it.section.icon + " " + it.section.name.toUpperCase())}</div>
     <div class="ypose">
-      <div class="yfig-big">${figSvg(it.id)}<span class="ynum">${it.n || it.no}</span></div>
+      <div class="yfig-big" data-act="yphoto" data-ex="${it.id}">${poseImg(it.id)}<span class="ynum">${it.n || it.no}</span><span class="zoomhint">⤢</span></div>
       <h2 class="g-ex" style="margin-top:8px">${esc(it.name)}</h2>
       <div class="ybadges">
         ${it.reps ? `<span class="badge big">${esc(it.reps)}</span>` : ""}
@@ -2160,7 +2180,7 @@ function vYogaSession(y) {
   const rows = YOGA.sections.map(sec => `<div class="sess-ex">
       <div class="n">${sec.icon} ${esc(sec.name)}</div>
       <div class="yfigrow">${sec.items.map(it =>
-        `<span class="yfigcell ${y.done[it.id] ? "" : "skip"}" title="${esc(it.name)}">${figSvg(it.id, "thumb")}</span>`).join("")}</div>
+        `<span class="yfigcell ${y.done[it.id] ? "" : "skip"}" title="${esc(it.name)}">${poseImg(it.id, "thumb")}</span>`).join("")}</div>
     </div>`).join("");
 
   return `<div class="card">

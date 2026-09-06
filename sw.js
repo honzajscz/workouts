@@ -2,7 +2,7 @@
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v9";
+const CACHE = "trenink-v10";
 
 const ASSETS = [
   "./",
@@ -15,7 +15,30 @@ const ASSETS = [
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icons/apple-touch-icon.png",
+  "./img/yoga/w1.jpg",
+  "./img/yoga/w2.jpg",
+  "./img/yoga/w3.jpg",
+  "./img/yoga/w4.jpg",
+  "./img/yoga/w5.jpg",
+  "./img/yoga/w6.jpg",
+  "./img/yoga/w7.jpg",
+  "./img/yoga/y1.jpg",
+  "./img/yoga/y2.jpg",
+  "./img/yoga/y3.jpg",
+  "./img/yoga/y4.jpg",
+  "./img/yoga/y5.jpg",
+  "./img/yoga/y6.jpg",
+  "./img/yoga/y7.jpg",
+  "./img/yoga/y8.jpg",
+  "./img/yoga/y9.jpg",
+  "./img/yoga/y10.jpg",
+  "./img/yoga/y11.jpg",
+  "./img/yoga/y12.jpg",
+  "./img/yoga/y13.jpg",
+  "./img/yoga/y14.jpg",
+  "./img/yoga/y15.jpg",
+  "./img/yoga/y16.jpg"
 ];
 
 self.addEventListener("install", event => {

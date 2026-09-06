@@ -997,96 +997,71 @@ ul.howto.yhowto li:last-child { margin-bottom: 0; }
 .tabbar a { max-width: 110px; font-size: 10.5px; }
 .tabbar a .ico { font-size: 19px; }
 
-/* ---------- ilustrace jógových pozic ---------- */
+/* ---------- fotky jógových pozic ---------- */
 
-.yfig {
+.yphoto {
   display: block;
   width: 100%;
   height: auto;
-  color: var(--text);
-}
-.yfig .b {                         /* tělo – hlavní linky */
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 5.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.yfig .h { fill: currentColor; }   /* hlava */
-.yfig .gr {                        /* podložka */
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  opacity: 0.22;
-}
-.yfig .ar {                        /* šipky pohybu */
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.yfig .dn {                        /* naznačený pohyb / podtlak */
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-dasharray: 4 5;
-  opacity: 0.85;
-}
-.yfig .hr {                        /* vlasy */
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  opacity: 0.5;
-}
-.yfig .ch {                        /* čakry */
-  stroke: var(--accent);
-  stroke-width: 5;
-  stroke-linecap: round;
+  border-radius: 10px;
+  background: #fff;
 }
 
 .yfig-big {
   position: relative;
-  width: min(74vw, 300px);
+  width: min(88vw, 440px);
   margin: 0 auto;
-  background: var(--card);
+  background: #fff;
   border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 10px 12px;
+  border-radius: 16px;
+  padding: 8px;
+  cursor: zoom-in;
+  box-shadow: var(--shadow);
 }
 .yfig-big .ynum {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: -8px;
+  left: -8px;
   width: 30px;
   height: 30px;
   font-size: 14px;
   display: grid;
   place-items: center;
+  background: var(--card);
+}
+.yfig-big .zoomhint {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font-size: 13px;
+  color: #444;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-weight: 700;
 }
 
-.yfig.thumb {
+.yphoto.thumb {
   flex: 0 0 auto;
-  width: 48px;
-  height: 38px;
-  opacity: 0.9;
+  width: 62px;
+  border-radius: 8px;
+  padding: 2px;
 }
+
+.yphoto.full { border-radius: 12px; }
+.modal.photo { max-width: 96vw; }
+.modal-back.photo .modal { padding: 12px; }
 
 .yfigrow {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
   margin-top: 6px;
 }
 .yfigcell {
-  width: 46px;
-  border-radius: 9px;
-  background: var(--card-2);
-  padding: 2px;
+  width: 58px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
 }
-.yfigcell.skip { opacity: 0.3; }
-.yfigcell.skip .yfig .ar,
-.yfigcell.skip .yfig .dn { stroke: currentColor; }
+.yfigcell.skip { opacity: 0.3; filter: grayscale(1); }
