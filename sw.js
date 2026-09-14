@@ -2,7 +2,7 @@
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v11";
+const CACHE = "trenink-v12";
 
 const ASSETS = [
   "./",
@@ -60,6 +60,9 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET" || !req.url.startsWith(self.location.origin)) return;
+  // Claude Akademie (podsložka) má vlastní service worker a cache – nechat ji být,
+  // jinak by se její index.html uložil pod klíč "./index.html" tréninkové appky.
+  if (req.url.startsWith(new URL("./claude-akademie/", self.location.href).href)) return;
 
   // navigace se ukládá pod index.html, ať offline funguje i s #/... adresou
   const cacheKey = req.mode === "navigate" ? "./index.html" : req;

@@ -65,3 +65,18 @@ python3 -m http.server 8000
 | `app.js` | logika – routing, trackování, statistiky, export/import |
 | `styles.css` | vzhled (tmavý/světlý režim) |
 | `sw.js` + `manifest.webmanifest` | offline režim a instalace na plochu |
+
+## 🎓 Claude Akademie (samostatná appka)
+
+Ve složce **`claude-akademie/`** je nezávislá PWA pro učení práce s Claude v češtině, zpracovaná podle kurzů
+[Claude Academy](https://academy.claude.com/). S tréninkovou appkou nesdílí kód ani data, jen repozitář a nasazení.
+
+**Adresa:** https://honzajscz.github.io/workouts/claude-akademie/
+
+- 8 kurzů, 83 krátkých lekcí (3 až 6 minut), praktická cvičení z originálu nahrazena komentovanými ukázkami
+- kontrolní otázky s vysvětlením, kartičky s rozloženým opakováním, rychlý test, slovníček pojmů
+- denní cíl, série dní, heatmapa, odznaky za kurzy, poznámky a záložky, předčítání lekce nahlas
+- offline režim, export/import pokroku (data zůstávají v prohlížeči)
+
+Obsah lekcí je v `claude-akademie/kurzy/*.js` (formát je popsaný v `kurzy/_index.js`). Po změně souborů zvyš verzi
+cache v `claude-akademie/sw.js`.
