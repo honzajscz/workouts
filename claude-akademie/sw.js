@@ -5,7 +5,8 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k.startsWith("claude-akademie-")).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k === "claude-akademie-v1").map(k => caches.delete(k))); // jen stará cache, nová appka má v2+
+    await self.clients.claim();
     await self.registration.unregister();
     const clients = await self.clients.matchAll({ type: "window" });
     clients.forEach(c => c.navigate(c.url));

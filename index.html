@@ -1,54 +1,40 @@
 <!DOCTYPE html>
-<html lang="cs" data-theme="auto">
+<html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Trénink</title>
-  <meta name="description" content="Tréninkový deník – plán A1/B/A2, trackování sérií, historie a statistiky. Data zůstávají ve tvém prohlížeči.">
-  <meta name="theme-color" content="#0b1220">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Trénink">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trénink se přestěhoval</title>
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="3;url=https://honzajscz.github.io/learning-apps/trenink/">
+  <style>
+    body { margin: 0; min-height: 100dvh; display: flex; align-items: center; justify-content: center; background: #0b1220; color: #e9eefb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 24px; }
+    a { color: #a3e635; font-weight: 700; }
+    p { max-width: 420px; line-height: 1.5; }
+  </style>
 </head>
 <body>
-  <header class="app-header">
-    <a id="h-back" class="back" href="#/" style="display:none" aria-label="Zpět">‹</a>
-    <div class="head-txt">
-      <h1 id="h-title">Trénink</h1>
-      <p class="sub" id="h-sub"></p>
-    </div>
-  </header>
-
-  <main id="view">
-    <noscript><p style="padding:20px">Aplikace potřebuje zapnutý JavaScript.</p></noscript>
-  </main>
-
-  <nav class="tabbar">
-    <a href="#/" data-tab="home"><span class="ico">🏋️</span>Plán</a>
-    <a href="#/yoga" data-tab="yoga"><span class="ico">🧘</span>Jóga</a>
-    <a href="#/history" data-tab="history"><span class="ico">🗓️</span>Historie</a>
-    <a href="#/stats" data-tab="stats"><span class="ico">📈</span>Statistiky</a>
-    <a href="#/more" data-tab="more"><span class="ico">⚙️</span>Více</a>
-  </nav>
-
-  <div id="timer"></div>
-  <div id="toast"></div>
-  <div id="modal"></div>
-
-  <script src="data.js"></script>
-  <script src="figures.js"></script>
-  <script src="app.js"></script>
+  <p>🏋️ Trénink má novou adresu:<br>
+    <a id="lnk" href="https://honzajscz.github.io/learning-apps/trenink/">honzajscz.github.io/learning-apps/trenink/</a><br><br>
+    <small>Tvoje tréninky a historie zůstávají (data jsou uložená pro celou doménu). Starou ikonu na ploše smaž a z nové adresy si přidej novou.</small></p>
   <script>
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(() => {});
-      });
-    }
+    // Přesměrovací stránka po přesunu appky do repozitáře learning-apps.
+    // Odregistruje starý service worker této cesty, smaže jeho cache a přesměruje.
+    // Cache Storage je společná pro celou doménu: mažou se jen cache staré appky
+    // z této cesty (trenink-v1 až trenink-v14), nová appka v learning-apps má v15 a výš.
+    const isLegacy = k => { const m = /^trenink-v(\d+)$/.exec(k); return !!m && Number(m[1]) <= 14; };
+    (async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) if (r.scope.endsWith("/workouts/")) await r.unregister();
+        }
+        if (window.caches) {
+          const keys = await caches.keys();
+          for (const k of keys) if (isLegacy(k)) await caches.delete(k);
+        }
+      } catch { /* ignore */ }
+      location.replace(document.getElementById("lnk").href + location.hash);
+    })();
   </script>
 </body>
 </html>
