@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Akademie se přestěhovala</title>
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="3;url=https://honzajscz.github.io/learning-apps/claude-akademie/">
+  <style>
+    body { margin: 0; min-height: 100dvh; display: flex; align-items: center; justify-content: center; background: #1c1917; color: #f5efe6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 24px; }
+    a { color: #e07a5f; font-weight: 700; }
+    p { max-width: 420px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <p>🎓 Claude Akademie má novou adresu:<br>
+    <a id="lnk" href="https://honzajscz.github.io/learning-apps/claude-akademie/">honzajscz.github.io/learning-apps/claude-akademie/</a><br><br>
+    <small>Tvůj pokrok zůstává (data jsou uložená pro celou doménu). Starou ikonu na ploše můžeš smazat a přidat novou.</small></p>
+  <script>
+    // Přesměrovací stránka po přesunu appky. Odregistruje starý service worker
+    // této cesty, smaže jeho cache a pošle uživatele na novou adresu.
+    (async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) if (r.scope.includes("/workouts/claude-akademie/")) await r.unregister();
+        }
+        if (window.caches) {
+          const keys = await caches.keys();
+          for (const k of keys) if (k.startsWith("claude-akademie-")) await caches.delete(k);
+        }
+      } catch { /* ignore */ }
+      location.replace(document.getElementById("lnk").href);
+    })();
+  </script>
+</body>
+</html>
