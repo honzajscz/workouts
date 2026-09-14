@@ -1791,12 +1791,13 @@ document.addEventListener("click", e => {
       (async () => {
         try {
           if ("serviceWorker" in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (const r of regs) await r.update();
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg) await reg.update();
           }
           if (window.caches) {
+            // jen vlastní cache: na stejné doméně můžou běžet i jiné appky
             const keys = await caches.keys();
-            for (const k of keys) await caches.delete(k);
+            for (const k of keys) if (k.startsWith("trenink-")) await caches.delete(k);
           }
         } catch { /* ignore */ }
         location.reload();

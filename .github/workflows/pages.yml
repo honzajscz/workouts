@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - claude/training-app-github-pages-3q1qrd
-      - claude/claude-learning-page-cz-ml7218
   workflow_dispatch:
 
 permissions:

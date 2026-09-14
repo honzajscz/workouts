@@ -1,61 +1,13 @@
-/* Service worker Claude Akademie: po prvním načtení funguje appka i offline.
-   Strategie network-first: s připojením se vždy načte nejnovější verze,
-   bez připojení poslední stažená kopie. Při změně souborů zvyš verzi cache. */
-const CACHE = "claude-akademie-v1";
-
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./kurzy/_index.js",
-  "./kurzy/claude-101.js",
-  "./kurzy/ai-fluency.js",
-  "./kurzy/schopnosti-a-limity.js",
-  "./kurzy/claude-code-101.js",
-  "./kurzy/cowork.js",
-  "./kurzy/mcp.js",
-  "./kurzy/subagenti.js",
-  "./kurzy/skills.js",
-  "./manifest.webmanifest",
-  "./icons/icon.svg",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png"
-];
-
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
-});
-
+/* Přechodný service worker po přesunu Claude Akademie do repozitáře learning-apps.
+   Nahradí starý worker na této cestě, uklidí jeho cache a sám se odregistruje,
+   aby nainstalovaná stará verze dostala přesměrovací stránku a ne 404. */
+self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("fetch", event => {
-  const req = event.request;
-  if (req.method !== "GET" || !req.url.startsWith(self.location.origin)) return;
-
-  // navigace se ukládá pod index.html, ať offline funguje i s #/... adresou
-  const cacheKey = req.mode === "navigate" ? "./index.html" : req;
-
-  event.respondWith(
-    fetch(req)
-      .then(res => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then(c => c.put(cacheKey, copy)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(cacheKey))
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith("claude-akademie-")).map(k => caches.delete(k)));
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll({ type: "window" });
+    clients.forEach(c => c.navigate(c.url));
+  })());
 });

@@ -1,61 +1,37 @@
 <!DOCTYPE html>
-<html lang="cs" data-theme="auto">
+<html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Claude Akademie</title>
-  <meta name="description" content="Česká učebnice Claude po malých kouscích: kurzy podle Claude Academy, kvízy, kartičky k opakování, slovníček a sledování pokroku. Funguje offline.">
-  <meta name="theme-color" content="#1c1917">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Claude Akademie">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Akademie se přestěhovala</title>
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="3;url=https://honzajscz.github.io/learning-apps/claude-akademie/">
+  <style>
+    body { margin: 0; min-height: 100dvh; display: flex; align-items: center; justify-content: center; background: #1c1917; color: #f5efe6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 24px; }
+    a { color: #e07a5f; font-weight: 700; }
+    p { max-width: 420px; line-height: 1.5; }
+  </style>
 </head>
 <body>
-  <header class="app-header">
-    <a id="h-back" class="back" href="#/" style="display:none" aria-label="Zpět">‹</a>
-    <div class="head-txt">
-      <h1 id="h-title">Claude Akademie</h1>
-      <p class="sub" id="h-sub"></p>
-    </div>
-    <div class="head-actions" id="h-actions"></div>
-  </header>
-
-  <main id="view">
-    <noscript><p style="padding:20px">Aplikace potřebuje zapnutý JavaScript.</p></noscript>
-  </main>
-
-  <nav class="tabbar">
-    <a href="#/" data-tab="dnes"><span class="ico">🌅</span>Dnes</a>
-    <a href="#/kurzy" data-tab="kurzy"><span class="ico">📚</span>Kurzy</a>
-    <a href="#/opakovani" data-tab="opakovani"><span class="ico">🔁</span>Opakování</a>
-    <a href="#/slovnik" data-tab="slovnik"><span class="ico">🔤</span>Slovníček</a>
-    <a href="#/vice" data-tab="vice"><span class="ico">⚙️</span>Více</a>
-  </nav>
-
-  <div id="toast"></div>
-  <div id="modal"></div>
-
-  <script src="kurzy/_index.js"></script>
-  <script src="kurzy/claude-101.js"></script>
-  <script src="kurzy/ai-fluency.js"></script>
-  <script src="kurzy/schopnosti-a-limity.js"></script>
-  <script src="kurzy/claude-code-101.js"></script>
-  <script src="kurzy/cowork.js"></script>
-  <script src="kurzy/mcp.js"></script>
-  <script src="kurzy/subagenti.js"></script>
-  <script src="kurzy/skills.js"></script>
-  <script src="app.js"></script>
+  <p>🎓 Claude Akademie má novou adresu:<br>
+    <a id="lnk" href="https://honzajscz.github.io/learning-apps/claude-akademie/">honzajscz.github.io/learning-apps/claude-akademie/</a><br><br>
+    <small>Tvůj pokrok zůstává (data jsou uložená pro celou doménu). Starou ikonu na ploše můžeš smazat a přidat novou.</small></p>
   <script>
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(() => {});
-      });
-    }
+    // Přesměrovací stránka po přesunu appky. Odregistruje starý service worker
+    // této cesty, smaže jeho cache a pošle uživatele na novou adresu.
+    (async () => {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) if (r.scope.includes("/workouts/claude-akademie/")) await r.unregister();
+        }
+        if (window.caches) {
+          const keys = await caches.keys();
+          for (const k of keys) if (k.startsWith("claude-akademie-")) await caches.delete(k);
+        }
+      } catch { /* ignore */ }
+      location.replace(document.getElementById("lnk").href);
+    })();
   </script>
 </body>
 </html>
