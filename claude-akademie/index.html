@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="cs" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Claude Akademie</title>
+  <meta name="description" content="Česká učebnice Claude po malých kouscích: kurzy podle Claude Academy, kvízy, kartičky k opakování, slovníček a sledování pokroku. Funguje offline.">
+  <meta name="theme-color" content="#1c1917">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Claude Akademie">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <a id="h-back" class="back" href="#/" style="display:none" aria-label="Zpět">‹</a>
+    <div class="head-txt">
+      <h1 id="h-title">Claude Akademie</h1>
+      <p class="sub" id="h-sub"></p>
+    </div>
+    <div class="head-actions" id="h-actions"></div>
+  </header>
+
+  <main id="view">
+    <noscript><p style="padding:20px">Aplikace potřebuje zapnutý JavaScript.</p></noscript>
+  </main>
+
+  <nav class="tabbar">
+    <a href="#/" data-tab="dnes"><span class="ico">🌅</span>Dnes</a>
+    <a href="#/kurzy" data-tab="kurzy"><span class="ico">📚</span>Kurzy</a>
+    <a href="#/opakovani" data-tab="opakovani"><span class="ico">🔁</span>Opakování</a>
+    <a href="#/slovnik" data-tab="slovnik"><span class="ico">🔤</span>Slovníček</a>
+    <a href="#/vice" data-tab="vice"><span class="ico">⚙️</span>Více</a>
+  </nav>
+
+  <div id="toast"></div>
+  <div id="modal"></div>
+
+  <script src="kurzy/_index.js"></script>
+  <script src="kurzy/claude-101.js"></script>
+  <script src="kurzy/ai-fluency.js"></script>
+  <script src="kurzy/schopnosti-a-limity.js"></script>
+  <script src="kurzy/claude-code-101.js"></script>
+  <script src="kurzy/cowork.js"></script>
+  <script src="kurzy/mcp.js"></script>
+  <script src="kurzy/subagenti.js"></script>
+  <script src="kurzy/skills.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
