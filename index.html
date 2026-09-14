@@ -19,6 +19,9 @@
   <script>
     // Přesměrovací stránka po přesunu appky do repozitáře learning-apps.
     // Odregistruje starý service worker této cesty, smaže jeho cache a přesměruje.
+    // Cache Storage je společná pro celou doménu: mažou se jen cache staré appky
+    // z této cesty (trenink-v1 až trenink-v14), nová appka v learning-apps má v15 a výš.
+    const isLegacy = k => { const m = /^trenink-v(\d+)$/.exec(k); return !!m && Number(m[1]) <= 14; };
     (async () => {
       try {
         if ("serviceWorker" in navigator) {
@@ -27,10 +30,10 @@
         }
         if (window.caches) {
           const keys = await caches.keys();
-          for (const k of keys) if (k.startsWith("trenink-")) await caches.delete(k);
+          for (const k of keys) if (isLegacy(k)) await caches.delete(k);
         }
       } catch { /* ignore */ }
-      location.replace(document.getElementById("lnk").href);
+      location.replace(document.getElementById("lnk").href + location.hash);
     })();
   </script>
 </body>

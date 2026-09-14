@@ -27,10 +27,10 @@
         }
         if (window.caches) {
           const keys = await caches.keys();
-          for (const k of keys) if (k.startsWith("claude-akademie-")) await caches.delete(k);
+          for (const k of keys) if (k === "claude-akademie-v1") await caches.delete(k); // jen stará cache, nová appka má v2+
         }
       } catch { /* ignore */ }
-      location.replace(document.getElementById("lnk").href);
+      location.replace(document.getElementById("lnk").href + location.hash);
     })();
   </script>
 </body>
