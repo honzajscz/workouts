@@ -1,7 +1,7 @@
 /* Service worker Claude Akademie: po prvním načtení funguje appka i offline.
    Strategie network-first: s připojením se vždy načte nejnovější verze,
    bez připojení poslední stažená kopie. Při změně souborů zvyš verzi cache. */
-const CACHE = "claude-akademie-v1";
+const CACHE = "claude-akademie-v2";
 
 const ASSETS = [
   "./",
@@ -32,10 +32,12 @@ self.addEventListener("install", event => {
   );
 });
 
+// Mažou se jen vlastní staré cache ("claude-akademie-*"); tréninková appka na
+// stejné doméně má "trenink-*" a její offline kopie musí zůstat netknutá.
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k.startsWith("claude-akademie-") && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

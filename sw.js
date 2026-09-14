@@ -2,7 +2,7 @@
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v12";
+const CACHE = "trenink-v13";
 
 const ASSETS = [
   "./",
@@ -49,10 +49,13 @@ self.addEventListener("install", event => {
   );
 });
 
+// Při aktivaci se mažou jen vlastní staré cache ("trenink-*"). Claude Akademie
+// na stejné doméně má cache "claude-akademie-*" a tu nesmíme sahat, jinak by
+// jedna appka druhé smazala offline kopii.
 self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k.startsWith("trenink-") && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
