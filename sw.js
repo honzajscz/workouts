@@ -1,8 +1,10 @@
 /* Service worker – appka funguje i offline (třeba v posilovně bez signálu).
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
+   GitHub Pages posílá soubory s max-age=600, proto se mezipaměť prohlížeče
+   obchází (jinak by se nová verze projevila až po 10 minutách).
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v16";
+const CACHE = "trenink-v17";
 
 const ASSETS = [
   "./",
@@ -44,7 +46,7 @@ const ASSETS = [
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE)
-      .then(cache => cache.addAll(ASSETS))
+      .then(cache => cache.addAll(ASSETS.map(u => new Request(u, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -67,7 +69,8 @@ self.addEventListener("fetch", event => {
   const cacheKey = req.mode === "navigate" ? "./index.html" : req;
 
   event.respondWith(
-    fetch(req)
+    // navigaci nejde přepsat parametry; ostatní soubory se ověří u serveru (při shodě jen 304)
+    fetch(req.mode === "navigate" ? req : new Request(req, { cache: "no-cache" }))
       .then(res => {
         if (res && res.ok) {
           const copy = res.clone();

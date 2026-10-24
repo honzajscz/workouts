@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.10.1";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -2214,6 +2214,9 @@ document.addEventListener("click", e => {
             const reg = await navigator.serviceWorker.getRegistration();
             if (reg) await reg.update();
           }
+          // stáhnout appku znovu mimo mezipaměť prohlížeče (funguje i se starým service workerem)
+          await Promise.all(["./", "index.html", "app.js", "data.js", "figures.js", "styles.css"]
+            .map(u => fetch(u, { cache: "reload" }).catch(() => {})));
           if (window.caches) {
             // jen vlastní cache: na stejné doméně můžou běžet i jiné appky
             const keys = await caches.keys();
