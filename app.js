@@ -4,13 +4,13 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.10.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
 /* ---------------- úložiště ---------------- */
 
-const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true };
+const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true, duck: true, notif: true };
 
 const store = {
   sessions: [],                       // všechny tréninky (aktivní i dokončené)
@@ -435,37 +435,118 @@ function renderTimer() {
 }
 
 /* ---------------- zvuky a hlas ---------------- */
+/* Pípání jde přes Web Audio: mixuje se s hudbou (YouTube Music apod.) a nezastaví ji.
+   Obdélníkový tón je přes hudbu slyšet výrazně líp než čistý sinus. */
+
+const CUES = {                       // [frekvence Hz, délka s, posun s]
+  work: [[1175, 0.14, 0], [1568, 0.2, 0.17]],
+  rest: [[784, 0.16, 0], [392, 0.34, 0.19]],
+  tick: [[880, 0.11, 0]],
+  done: [[1047, 0.16, 0], [1319, 0.16, 0.19], [1568, 0.4, 0.38]]
+};
+const CUE_VIBES = { work: 120, rest: 60, done: [150, 80, 150, 80, 300] };
+const CUE_VOL = 0.75;
 
 let audioCtx = null;
 
 function ensureAudio() {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") audioCtx.resume();
   } catch { /* zařízení bez Web Audio */ }
+  resumeAudio();
+  prepareDuck();
 }
 
-function beep(freq, dur = 0.12, delay = 0, vol = 0.3) {
-  if (!store.settings.sound || !audioCtx) return;
+// „suspended“ i iOS „interrupted“ (třeba když se rozehraje jiná appka)
+function resumeAudio() {
   try {
-    const t = audioCtx.currentTime + delay;
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = "sine";
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(audioCtx.destination);
-    o.start(t);
-    o.stop(t + dur + 0.05);
+    if (audioCtx && audioCtx.state !== "running") {
+      const p = audioCtx.resume();
+      if (p && p.catch) p.catch(() => {});
+    }
   } catch { /* ignore */ }
 }
 
-function soundWork()  { beep(1175, 0.12); beep(1568, 0.16, 0.15); if (navigator.vibrate) navigator.vibrate(120); }
-function soundRest()  { beep(392, 0.28); if (navigator.vibrate) navigator.vibrate(60); }
-function soundTick()  { beep(880, 0.09); }
-function soundDone()  { beep(1047, 0.15); beep(1319, 0.15, 0.18); beep(1568, 0.35, 0.36); if (navigator.vibrate) navigator.vibrate([150, 80, 150, 80, 300]); }
+function tone(freq, dur, at) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = "square";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(CUE_VOL, at + 0.008);
+  g.gain.setValueAtTime(CUE_VOL, at + dur - 0.03);
+  g.gain.linearRampToValueAtTime(0, at + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(at);
+  o.stop(at + dur + 0.02);
+  return o;
+}
+
+/* Zahraje signál hned, nebo v čase `at` (hodiny audio kontextu).
+   Vrací [{o, a}] – oscilátory a jejich start, ať jde naplánované pípání zrušit. */
+function playCue(name, at) {
+  if (!store.settings.sound || !audioCtx) return [];
+  try {
+    const t0 = at === undefined ? audioCtx.currentTime : at;
+    return CUES[name].map(([f, d, off]) => ({ o: tone(f, d, t0 + off), a: t0 + off }));
+  } catch { return []; }
+}
+
+function vibrate(pattern) { if (pattern && navigator.vibrate) navigator.vibrate(pattern); }
+
+function soundWork() { playCue("work"); vibrate(CUE_VIBES.work); }
+function soundTick() { playCue("tick"); }
+function soundDone() { playCue("done"); vibrate(CUE_VIBES.done); }
+
+/* Ztišení hudby (Android): krátký tichý zvuk přes <audio> si v Chrome řekne
+   o „přechodný“ audio focus, takže YouTube Music apod. na chvíli ztiší
+   (nezastaví). Chrome to dělá jen u médií se známou délkou do 5 s, proto má
+   klip 4,5 s a při delším hlášení se přetáčí na začátek. Na iPhonu by <audio>
+   hudbu zastavilo, tam se ztišení nepoužívá. */
+const DUCK_SEC = 4.5;
+const CAN_DUCK = /Android/.test(navigator.userAgent) && /Chrome\//.test(navigator.userAgent);
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+let duckEl = null;
+
+function silentWav(sec, rate = 8000) {
+  const n = Math.round(sec * rate);
+  const v = new DataView(new ArrayBuffer(44 + n * 2));   // 16bit mono PCM, samé nuly
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE");
+  str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, "data"); v.setUint32(40, n * 2, true);
+  return new Blob([v.buffer], { type: "audio/wav" });
+}
+
+function prepareDuck() {
+  if (!CAN_DUCK || duckEl) return;
+  try {
+    duckEl = new Audio(URL.createObjectURL(silentWav(DUCK_SEC)));
+    duckEl.preload = "auto";
+    duckEl.addEventListener("timeupdate", () => {
+      if (duckEl.currentTime > DUCK_SEC - 1 && speechBusy()) duckEl.currentTime = 0;
+    });
+    duckEl.load();
+  } catch { duckEl = null; }
+}
+
+function duck() {
+  if (!duckEl || !store.settings.duck) return;
+  // bez známé délky by to Chrome bral jako hudbu a YouTube Music by zastavil
+  if (duckEl.readyState < 1 || !(duckEl.duration <= 5)) return;
+  try {
+    duckEl.currentTime = 0;
+    const p = duckEl.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch { /* ignore */ }
+}
+
+function speechBusy() {
+  try { return "speechSynthesis" in window && (speechSynthesis.speaking || speechSynthesis.pending); }
+  catch { return false; }
+}
 
 function speak(text) {
   if (!store.settings.voice) return;
@@ -475,6 +556,8 @@ function speak(text) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "cs-CZ";
     u.rate = 1.05;
+    u.volume = 1;
+    duck();
     speechSynthesis.speak(u);
   } catch { /* ignore */ }
 }
@@ -483,15 +566,37 @@ function speakable(label) {
   return String(label || "").replace(/\+/g, " plus ").replace(/,/g, " celá ");
 }
 
+/* Udržovací tón: 25 Hz těsně nad prahem ticha – neslyšitelný, ale prohlížeč
+   stránku bere jako „hrající zvuk“, takže ji na pozadí (zamčený displej,
+   přepnutí do jiné appky) neuspí a nepřibrzdí jí časovače. */
+let keepAlive = null;
+
+function startKeepAlive() {
+  if (keepAlive || !audioCtx) return;
+  try {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.frequency.value = 25;
+    g.gain.value = 0.003;
+    o.connect(g).connect(audioCtx.destination);
+    o.start();
+    keepAlive = o;
+  } catch { keepAlive = null; }
+}
+
+function stopKeepAlive() {
+  try { if (keepAlive) { keepAlive.stop(); keepAlive.disconnect(); } } catch { /* ignore */ }
+  keepAlive = null;
+}
+
 /* ---------------- řízený trénink (autopilot) ---------------- */
 /* Vygeneruje z tréninku posloupnost kroků série/pauza, sám odpočítává,
    píská, hlásí cviky a odškrtává hotové série. */
 
 const GUIDED_DEFAULTS = { work: 40, transition: 10, rest: 60 };
 
-let guided = null;        // {sid, steps, idx, phase, endsAt, dur, paused, remainMs, lastBeep, finished}
+let guided = null;        // {sid, steps, idx, phase, endsAt, dur, paused, autoPaused, remainMs, lastBeep, finished}
 let guidedInterval = null;
-let wakeLock = null;
 
 function exGuidedCfg(ex) {
   const g = (ex && ex.guided) || {};
@@ -547,6 +652,68 @@ function guidedTotalSeconds(steps, fromIdx = 0) {
   return t;
 }
 
+/* Co přijde po fázi (idx, phase): {idx, phase, dur}, nebo null = konec tréninku. */
+function guidedNextPhase(idx, phase) {
+  const st = guided.steps[idx];
+  if (phase === "work") {
+    if (idx === guided.steps.length - 1) return null;
+    if (st.restAfter > 0) return { idx, phase: "rest", dur: st.restAfter };
+  }
+  return { idx: idx + 1, phase: "work", dur: guided.steps[idx + 1].work };
+}
+
+/* Pípání se plánuje dopředu na hodinách audio kontextu, takže zazní přesně
+   i ve chvíli, kdy prohlížeč na pozadí přibrzdí JavaScript. */
+const CUE_AHEAD = 180000;   // ms dopředu
+let cueNodes = [];          // naplánované oscilátory [{o, a}]
+let cueCursor = null;       // první fáze, která ještě není naplánovaná {idx, phase, start, end}
+let cueSync = null;         // {ctx, wall} – stav obou hodin při naplánování
+
+function clearCues() {
+  const now = audioCtx ? audioCtx.currentTime : 0;
+  for (const n of cueNodes) {
+    if (n.a <= now) continue;            // už hraje nebo dohrálo
+    try { n.o.stop(); } catch { /* ignore */ }
+    try { n.o.disconnect(); } catch { /* ignore */ }
+  }
+  cueNodes = [];
+  cueCursor = null;
+  cueSync = null;
+}
+
+// zruší naplánované pípání a naplánuje ho znovu podle aktuálního stavu
+function resetCues() {
+  clearCues();
+  if (!guided || guided.paused || guided.finished || !store.settings.sound || !audioCtx) return;
+  cueSync = { ctx: audioCtx.currentTime, wall: Date.now() };
+  cueCursor = { idx: guided.idx, phase: guided.phase, start: guided.endsAt - guided.dur * 1000, end: guided.endsAt };
+  topUpCues();
+}
+
+function topUpCues() {
+  if (!cueSync) return;
+  const now = Date.now();
+  const at = wall => cueSync.ctx + (wall - cueSync.wall) / 1000;
+  const add = (name, t) => { if (t >= now - 50) cueNodes.push(...playCue(name, at(t))); };
+  cueNodes = cueNodes.filter(n => n.a > audioCtx.currentTime - 2);
+  while (cueCursor && cueCursor.start < now + CUE_AHEAD) {
+    const { idx, phase, start, end } = cueCursor;
+    for (let k = 3; k >= 1; k--) if (end - k * 1000 > start + 500) add("tick", end - k * 1000);
+    const nx = guidedNextPhase(idx, phase);
+    add(nx ? nx.phase : "done", end);
+    cueCursor = nx && { idx: nx.idx, phase: nx.phase, start: end, end: end + nx.dur * 1000 };
+  }
+}
+
+function cueDrift() {
+  return (audioCtx.currentTime - cueSync.ctx) - (Date.now() - cueSync.wall) / 1000;
+}
+
+// běží audio a naplánované pípání sedí s hodinami?
+function cuesInSync() {
+  return !!(cueSync && audioCtx && audioCtx.state === "running" && Math.abs(cueDrift()) < 0.25);
+}
+
 function startGuided(sid) {
   const sess = getSession(sid);
   if (!sess) return;
@@ -558,17 +725,24 @@ function startGuided(sid) {
     sid, steps, idx: 0, phase: "work",
     dur: steps[0].work,
     endsAt: Date.now() + steps[0].work * 1000,
-    paused: false, remainMs: 0, lastBeep: null, finished: false
+    paused: false, autoPaused: false, remainMs: 0, lastBeep: null, finished: false
   };
   if (!guidedInterval) guidedInterval = setInterval(guidedTick, 250);
   requestWake();
+  startKeepAlive();
   soundWork();
+  resetCues();
   announceStep();
+  askNotifPermission();
+  updateGuidedNotif(true);
   location.hash = "#/guided/" + sid;
   render();
 }
 
 function stopGuided() {
+  clearCues();
+  stopKeepAlive();
+  closeGuidedNotif();
   guided = null;
   if (guidedInterval) { clearInterval(guidedInterval); guidedInterval = null; }
   releaseWake();
@@ -583,90 +757,135 @@ function announceStep() {
   speak(text);
 }
 
-function guidedTick() {
-  if (!guided || guided.paused || guided.finished) return;
-  const remain = guided.endsAt - Date.now();
-  const s = Math.ceil(remain / 1000);
-  if (s <= 3 && s >= 1 && guided.lastBeep !== s) { guided.lastBeep = s; soundTick(); }
-  if (remain <= 0) { advanceGuided(); return; }
-  if ((location.hash || "").startsWith("#/guided")) updateGuidedDom(remain);
-  else renderTimer();
+function announcePhase() {
+  if (guided.phase === "rest") {
+    const next = guided.steps[guided.idx + 1];
+    speak(`Pauza. Potom ${next.name}, série ${next.setIdx + 1}.`);
+  } else {
+    announceStep();
+  }
 }
 
-function advanceGuided() {
-  if (!guided) return;
+function guidedTick() {
+  if (!guided || guided.paused || guided.finished) return;
+  resumeAudio();
+  if (wakeWanted && !wakeLock) requestWake();
+  const now = Date.now();
+  if (now >= guided.endsAt) {
+    // po uspání na pozadí: když audio hrálo dál (pípání zaznělo včas), stav se dorovná
+    // podle hodin; jinak (iOS uspí i zvuk) se naváže od teď
+    advanceGuided(now - guided.endsAt < 3000 || cuesInSync());
+    return;
+  }
+  if (cueSync && audioCtx.state === "running" && Math.abs(cueDrift()) >= 0.25) resetCues();
+  else topUpCues();
+  const remain = guided.endsAt - now;
+  // před koncem fáze ztišit hudbu, ať je slyšet odpočet i hlášení
+  if (remain <= 3000 && guided.lastBeep === null) {
+    guided.lastBeep = Math.ceil(remain / 1000);
+    if (store.settings.sound || store.settings.voice) duck();
+  }
+  if ((location.hash || "").startsWith("#/guided")) updateGuidedDom(remain);
+  else renderTimer();
+  updateGuidedNotif();
+}
+
+/* Přechod do další fáze. auto = doběhl odpočet: nová fáze navazuje přesně na konec
+   staré (pípání je naplánované dopředu, po uspání se dožene i víc fází);
+   jinak (ťuknutí, návrat po uspání bez zvuku) začíná nová fáze teď. */
+function advanceGuided(auto) {
+  if (!guided || guided.finished) return;
   const sess = getSession(guided.sid);
   if (!sess) { stopGuided(); return; }
+  const now = Date.now();
+  const scheduled = auto && cuesInSync();
+  // „Hotovo, dál“ během pauzy: nová fáze se rozběhne (dřív zůstala stát)
+  if (!auto) { guided.paused = false; guided.autoPaused = false; }
+  let nx;
+  do {
+    if (guided.phase === "work") {
+      const step = guided.steps[guided.idx];
+      const set = sess.exercises[step.exId].sets[step.setIdx];
+      if (!set.done) { set.done = true; touch(sess); }
+    }
+    nx = guidedNextPhase(guided.idx, guided.phase);
+    if (!nx) break;
+    guided.endsAt = (auto ? guided.endsAt : now) + nx.dur * 1000;
+    guided.idx = nx.idx;
+    guided.phase = nx.phase;
+    guided.dur = nx.dur;
+  } while (auto && guided.endsAt <= now);
   guided.lastBeep = null;
 
-  if (guided.phase === "work") {
-    const step = guided.steps[guided.idx];
-    const set = sess.exercises[step.exId].sets[step.setIdx];
-    if (!set.done) { set.done = true; touch(sess); }
-
-    if (guided.idx === guided.steps.length - 1) {
-      guided.finished = true;
-      soundDone();
-      speak("Trénink hotový. Dobrá práce!");
-      releaseWake();
-      render();
-      return;
-    }
-    if (step.restAfter > 0) {
-      guided.phase = "rest";
-      guided.dur = step.restAfter;
-      guided.endsAt = Date.now() + step.restAfter * 1000;
-      const next = guided.steps[guided.idx + 1];
-      soundRest();
-      speak(`Pauza. Potom ${next.name}, série ${next.setIdx + 1}.`);
-      render();
-      return;
-    }
+  if (!nx) {
+    guided.finished = true;
+    if (scheduled) { cueNodes = []; cueCursor = null; cueSync = null; }   // naplánovaná fanfára dohraje
+    else { clearCues(); playCue("done"); }
+    vibrate(CUE_VIBES.done);
+    speak("Trénink hotový. Dobrá práce!");
+    stopKeepAlive();
+    releaseWake();
+    updateGuidedNotif(true);
+    render();
+    return;
   }
-  // konec pauzy (nebo série bez pauzy) → další série
-  guided.idx++;
-  const st = guided.steps[guided.idx];
-  guided.phase = "work";
-  guided.dur = st.work;
-  guided.endsAt = Date.now() + st.work * 1000;
-  soundWork();
-  announceStep();
+  if (!scheduled) { playCue(guided.phase); resetCues(); }
+  vibrate(CUE_VIBES[guided.phase]);
+  announcePhase();
+  updateGuidedNotif(true);
   render();
+}
+
+function setGuidedPaused(paused) {
+  if (!guided || guided.finished || guided.paused === paused) return;
+  if (paused) {
+    guided.remainMs = Math.max(0, guided.endsAt - Date.now());
+  } else {
+    guided.endsAt = Date.now() + guided.remainMs;
+  }
+  guided.paused = paused;
+  guided.autoPaused = false;
+  resetCues();
+  updateGuidedNotif();
 }
 
 function pauseGuided() {
   if (!guided || guided.finished) return;
-  if (guided.paused) {
-    guided.endsAt = Date.now() + guided.remainMs;
-    guided.paused = false;
-  } else {
-    guided.remainMs = Math.max(0, guided.endsAt - Date.now());
-    guided.paused = true;
-  }
+  setGuidedPaused(!guided.paused);
   render();
 }
 
-/* Krok zpět: vrátí se na předchozí sérii (zruší její odškrtnutí);
-   na úplném začátku jen restartuje odpočet aktuální série. */
+/* Krok zpět jako u přehrávače: jedno ťuknutí spustí aktuální sérii/pauzu znovu
+   od začátku, druhé hned po něm (do 3 s od začátku) skočí na předchozí sérii
+   a zruší její odškrtnutí. */
+const BACK_PREV_MS = 3000;
+
 function backGuided() {
   if (!guided || guided.finished) return;
   const sess = getSession(guided.sid);
   if (!sess) return;
-  let target;
-  if (guided.phase === "rest") target = guided.idx;        // zpět k právě dojeté sérii
-  else if (guided.idx > 0) target = guided.idx - 1;        // o sérii zpět
-  else target = 0;                                         // začátek → restart odpočtu
-  const st = guided.steps[target];
-  const set = sess.exercises[st.exId].sets[st.setIdx];
-  if (set.done) { set.done = false; set.actual = null; touch(sess); }
-  guided.idx = target;
-  guided.phase = "work";
-  guided.dur = st.work;
-  guided.endsAt = Date.now() + st.work * 1000;
+  const remain = guided.paused ? guided.remainMs : guided.endsAt - Date.now();
+  const elapsed = guided.dur * 1000 - remain;
+  if (elapsed < BACK_PREV_MS && (guided.phase === "rest" || guided.idx > 0)) {
+    // v pauze zpět k právě dojeté sérii, při cvičení o sérii zpět
+    const target = guided.phase === "rest" ? guided.idx : guided.idx - 1;
+    const st = guided.steps[target];
+    const set = sess.exercises[st.exId].sets[st.setIdx];
+    if (set.done) { set.done = false; set.actual = null; touch(sess); }
+    guided.idx = target;
+    guided.phase = "work";
+  }
+  const st = guided.steps[guided.idx];
+  guided.dur = guided.phase === "work" ? st.work : st.restAfter;
+  guided.endsAt = Date.now() + guided.dur * 1000;
   guided.paused = false;
+  guided.autoPaused = false;
   guided.lastBeep = null;
-  soundWork();
-  announceStep();
+  playCue(guided.phase);
+  vibrate(CUE_VIBES[guided.phase]);
+  resetCues();
+  announcePhase();
+  updateGuidedNotif(true);
   render();
 }
 
@@ -676,19 +895,187 @@ function extendGuided(sec) {
   else guided.endsAt += sec * 1000;
   guided.dur += sec;
   guided.lastBeep = null;
+  resetCues();
+  updateGuidedNotif();
   render();
 }
 
+/* Displej nezhasíná (wake lock). Systém zámek uvolní při skrytí stránky
+   (a někdy i sám, třeba při úspoře baterie) → po návratu se vyžádá znovu. */
+let wakeLock = null;
+let wakeWanted = false;
+let wakeTry = 0;
+
 async function requestWake() {
-  try { wakeLock = await navigator.wakeLock.request("screen"); } catch { /* nepodporováno */ }
+  wakeWanted = true;
+  if (wakeLock || !("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+  if (Date.now() - wakeTry < 10000) return;
+  wakeTry = Date.now();
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    if (!wakeWanted || wakeLock) { lock.release(); return; }
+    wakeLock = lock;
+    lock.addEventListener("release", () => { if (wakeLock === lock) wakeLock = null; });
+    wakeTry = 0;
+  } catch { /* nepodporováno / odmítnuto */ }
 }
 function releaseWake() {
-  try { if (wakeLock) wakeLock.release(); } catch { /* ignore */ }
+  wakeWanted = false;
+  wakeTry = 0;
+  const lock = wakeLock;
   wakeLock = null;
+  try { if (lock) lock.release(); } catch { /* ignore */ }
 }
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && guided && !guided.finished) requestWake();
+  if (document.visibilityState !== "visible") return;
+  if (wakeWanted) { wakeTry = 0; requestWake(); }
+  resumeAudio();
+  guidedTick();   // po návratu hned dorovnat odpočet
 });
+
+/* ---------------- průběh v notifikaci (Android) ---------------- */
+/* Během řízeného tréninku visí v liště (i na zamčeném displeji) notifikace
+   s odpočtem a tlačítky Pauza / Hotovo, dál – trénink je na očích i v jiné appce.
+   Chrome aktualizaci se stejným tagem ukáže potichu (bez pípnutí a vibrace)
+   a dovolí 2 vlastní tlačítka. Ťuknutí na tlačítko obslouží sw.js a pošle
+   ho sem zprávou. iOS tlačítka v notifikacích webových appek neumí. */
+const CAN_NOTIFY = /Android/.test(navigator.userAgent) &&
+  "Notification" in window && "serviceWorker" in navigator;
+const NOTIF_TAG = "guided";
+let notifBusy = false;      // čeká se na předchozí showNotification
+let notifHidden = false;    // notifikace odsunutá → znovu se ukáže při další fázi
+let notifKey = "";          // naposledy zobrazený obsah
+let notifGen = 0;           // zvyšuje se zavřením (zahodí rozpracované zobrazení)
+let notifIcons = null;      // ikony jako data: URL, ať se každou sekundu nestahují
+
+function notifAllowed() {
+  return CAN_NOTIFY && store.settings.notif && Notification.permission === "granted";
+}
+
+// o povolení se dá požádat jen po ťuknutí
+function askNotifPermission() {
+  if (!CAN_NOTIFY || !store.settings.notif || Notification.permission !== "default") return;
+  try {
+    Promise.resolve(Notification.requestPermission())
+      .then(() => { if (Notification.permission === "granted") updateGuidedNotif(true); else render(); })
+      .catch(() => {});
+  } catch { /* ignore */ }
+}
+
+function prepareNotifIcons() {
+  if (notifIcons) return;
+  notifIcons = { icon: "icons/icon-192.png", badge: undefined };
+  try {
+    // malá ikonka do stavové lišty: Android z ní bere jen tvar (bílý kettlebell)
+    const c = document.createElement("canvas");
+    c.width = c.height = 96;
+    const g = c.getContext("2d");
+    g.fillStyle = g.strokeStyle = "#fff";
+    g.lineWidth = 10;
+    g.lineCap = "round";
+    g.beginPath(); g.arc(48, 38, 20, Math.PI, 0); g.stroke();
+    g.beginPath(); g.arc(48, 64, 25, 0, Math.PI * 2); g.fill();
+    notifIcons.badge = c.toDataURL("image/png");
+  } catch { /* ignore */ }
+  fetch("icons/icon-192.png")
+    .then(r => r.blob())
+    .then(b => new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
+    .then(url => { notifIcons.icon = url; })
+    .catch(() => {});
+}
+
+function guidedNotifContent() {
+  if (guided.finished) {
+    return { title: "🎉 Trénink hotový!", body: "Ťukni a trénink ulož.", actions: [] };
+  }
+  const short = id => (PLAN.shortNames || {})[id];
+  const st = guided.steps[guided.idx];
+  const isWork = guided.phase === "work";
+  const next = guided.steps[guided.idx + 1] || null;
+  const remain = guided.paused ? guided.remainMs : Math.max(0, guided.endsAt - Date.now());
+  const s = Math.ceil(remain / 1000);
+  const time = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+  const icon = guided.paused ? "⏸" : (isWork ? "💪" : "💤");
+  const shown = isWork ? st : next;
+  const title = isWork
+    ? `${icon} ${time} · ${short(st.exId) || st.name} S${st.setIdx + 1}/${st.setTotal}`
+    : `${icon} ${time} · Pauza → ${short(next.exId) || next.name} S${next.setIdx + 1}`;
+  const parts = [isWork ? st.name : `Další: ${next.name}, série ${next.setIdx + 1} z ${next.setTotal}`];
+  if (shown.label) parts.push(`cíl ${shown.label}`);
+  if (isWork) parts.push(next ? `pak ${short(next.exId) || next.name} S${next.setIdx + 1}` : "poslední série 🔥");
+  const ref = isWork ? guided.idx : guided.idx + 1;
+  parts.push(`${ref}/${guided.steps.length} sérií · ≈ ${guidedLeftMin(remain)} min`);
+  return {
+    title,
+    body: parts.join(" · "),
+    actions: [
+      { action: "pause", title: guided.paused ? "▶ Pokračovat" : "⏸ Pauza" },
+      { action: "next", title: isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu" }
+    ]
+  };
+}
+
+/* Zobrazí/aktualizuje notifikaci. force = nová fáze: ukáže se i po odsunutí. */
+function updateGuidedNotif(force) {
+  if (!guided || !notifAllowed() || notifBusy) return;
+  if (notifHidden && !force) return;
+  const c = guidedNotifContent();
+  const key = c.title + "|" + c.body + "|" + c.actions.map(a => a.title).join("|");
+  if (key === notifKey && !force) return;
+  prepareNotifIcons();
+  const gen = notifGen;
+  const sid = guided.sid;
+  notifBusy = true;
+  navigator.serviceWorker.ready
+    .then(reg => reg.showNotification(c.title, {
+      body: c.body,
+      tag: NOTIF_TAG,
+      renotify: false,
+      silent: true,
+      requireInteraction: true,
+      icon: notifIcons.icon,
+      badge: notifIcons.badge,
+      actions: c.actions,
+      data: { sid }
+    }))
+    .then(() => {
+      if (gen !== notifGen) { closeNotifs(); return; }   // trénink mezitím skončil
+      notifKey = key;
+      notifHidden = false;
+    })
+    .catch(() => {})
+    .then(() => { notifBusy = false; });
+}
+
+function closeNotifs() {
+  if (!CAN_NOTIFY) return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.getNotifications({ tag: NOTIF_TAG }))
+    .then(list => list.forEach(n => n.close()))
+    .catch(() => {});
+}
+
+function closeGuidedNotif() {
+  notifGen++;
+  notifKey = "";
+  notifHidden = false;
+  closeNotifs();
+}
+
+// tlačítka z notifikace (přeposílá sw.js)
+if (CAN_NOTIFY) {
+  navigator.serviceWorker.addEventListener("message", e => {
+    const m = e.data || {};
+    if (m.type !== "guided-notif") return;
+    if (m.action === "closed") { notifHidden = true; notifKey = ""; return; }
+    if (!guided || (m.sid && m.sid !== guided.sid)) return;
+    if (m.action === "pause") pauseGuided();
+    else if (m.action === "next") advanceGuided();
+    else if (m.action === "open" && !(location.hash || "").startsWith("#/guided")) location.hash = "#/guided/" + guided.sid;
+  });
+  try { navigator.serviceWorker.startMessages(); } catch { /* ignore */ }
+  closeNotifs();   // po znovuotevření appky je stará notifikace k ničemu
+}
 
 function updateGuidedDom(remainMs) {
   const t = document.getElementById("g-time");
@@ -702,12 +1089,15 @@ function updateGuidedDom(remainMs) {
     ring.style.strokeDashoffset = String(C * (1 - frac));
   }
   const est = document.getElementById("g-est");
-  if (est) {
-    const restRemain = guided.phase === "rest" || guided.idx >= guided.steps.length - 1
-      ? 0 : guided.steps[guided.idx].restAfter;
-    const total = Math.round(remainMs / 1000) + restRemain + guidedTotalSeconds(guided.steps, guided.idx + 1);
-    est.textContent = `zbývá ≈ ${Math.max(1, Math.round(total / 60))} min`;
-  }
+  if (est) est.textContent = `zbývá ≈ ${guidedLeftMin(remainMs)} min`;
+}
+
+// odhad minut do konce tréninku (remainMs = zbytek aktuální fáze)
+function guidedLeftMin(remainMs) {
+  const restAfter = guided.phase === "work" && guided.idx < guided.steps.length - 1
+    ? guided.steps[guided.idx].restAfter : 0;
+  const total = Math.round(remainMs / 1000) + restAfter + guidedTotalSeconds(guided.steps, guided.idx + 1);
+  return Math.max(1, Math.round(total / 60));
 }
 
 /* ---------------- toast ---------------- */
@@ -863,6 +1253,8 @@ function render() {
     modalPhoto = null;
   }
   lastRoute = path;
+  // technika zavřená (křížkem, mimo okno i odchodem jinam) → odpočet pokračuje
+  if (!modalEx && guided && guided.autoPaused) setGuidedPaused(false);
 
   let html = "";
   let header = { title: PLAN.title, sub: PLAN.subtitle, back: null };
@@ -1357,8 +1749,7 @@ function vGuided(sess) {
   const segs = guided.steps.map((s2, i) =>
     `<i class="seg${i < ref ? " done" : ""}${i === ref ? " cur" : ""}${s2.roundEnd ? " rend" : ""}"></i>`
   ).join("");
-  const estMin = Math.max(1, Math.round((Math.round(remain / 1000) +
-    (isWork && next ? st.restAfter : 0) + guidedTotalSeconds(guided.steps, guided.idx + 1)) / 60));
+  const estMin = guidedLeftMin(remain);
 
   return `<div class="guided">
     <div class="g-phase ${isWork ? "work" : "rest"}">${isWork ? "CVIČÍŠ" : "PAUZA"}</div>
@@ -1382,7 +1773,7 @@ function vGuided(sess) {
       <div class="g-progtxt muted small">${ref}/${guided.steps.length} sérií hotovo · <span id="g-est">zbývá ≈ ${estMin} min</span></div>
     </div>
     <div class="g-controls">
-      <button class="gbtn" data-act="g-back" title="Zpět o sérii">◀</button>
+      <button class="gbtn" data-act="g-back" title="Znovu od začátku, 2× = předchozí série">◀</button>
       <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
       <button class="gbtn main" data-act="g-next">${isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu"}</button>
       <button class="gbtn" data-act="g-plus">+15 s</button>
@@ -1641,6 +2032,16 @@ function vMore() {
         <div class="lbl">🔊 Hlasové pokyny v řízeném tréninku</div>
         <div class="switch ${store.settings.voice ? "on" : ""}"></div>
       </div>
+      ${CAN_DUCK ? `<div class="switchrow" data-act="toggle-duck">
+        <div class="lbl">🎵 Ztišit hudbu při pípání a hlášení</div>
+        <div class="switch ${store.settings.duck ? "on" : ""}"></div>
+      </div>` : ""}
+      ${CAN_NOTIFY ? `<div class="switchrow" data-act="toggle-notif">
+        <div class="lbl">📲 Průběh tréninku v notifikaci (odpočet a tlačítka)</div>
+        <div class="switch ${store.settings.notif ? "on" : ""}"></div>
+      </div>
+      ${store.settings.notif && Notification.permission === "denied" ? `<p class="hint small" style="margin:8px 0 0">⚠️ Notifikace má prohlížeč pro tuhle stránku zakázané. Povol je v nastavení webu (ikonka vedle adresy) nebo v nastavení Androidu u Chromu.</p>` : ""}` : ""}
+      ${IS_IOS ? `<p class="hint small" style="margin:8px 0 0">📱 iPhone: pípání ztlumí přepínač tichého režimu a se zamčeným displejem iOS webové appky uspí – během řízeného tréninku nech appku otevřenou a displej zapnutý.</p>` : ""}
     </div>
 
     <div class="card">
@@ -1697,11 +2098,11 @@ document.addEventListener("click", e => {
     case "noop": break;
     case "exinfo": {
       modalEx = d.ex;
-      // v řízeném tréninku čtení techniky automaticky pozastaví odpočet
+      // v řízeném tréninku čtení techniky pozastaví odpočet (po zavření se zase rozjede)
       if (guided && !guided.finished && !guided.paused &&
           (location.hash || "").startsWith("#/guided")) {
-        guided.remainMs = Math.max(0, guided.endsAt - Date.now());
-        guided.paused = true;
+        setGuidedPaused(true);
+        guided.autoPaused = true;
       }
       render();
       break;
@@ -1748,6 +2149,25 @@ document.addEventListener("click", e => {
     case "toggle-sound": {
       store.settings.sound = !store.settings.sound;
       if (store.settings.sound) { ensureAudio(); soundTick(); }
+      resetCues();
+      saveStore();
+      render();
+      break;
+    }
+    case "toggle-notif": {
+      store.settings.notif = !store.settings.notif;
+      saveStore();
+      if (store.settings.notif) {
+        askNotifPermission();
+        updateGuidedNotif(true);
+      } else {
+        closeGuidedNotif();
+      }
+      render();
+      break;
+    }
+    case "toggle-duck": {
+      store.settings.duck = !store.settings.duck;
       saveStore();
       render();
       break;

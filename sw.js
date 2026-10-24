@@ -2,7 +2,7 @@
    Strategie network-first: když je připojení, vždy se načte nejnovější verze;
    bez připojení se použije poslední stažená kopie z cache.
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v14";
+const CACHE = "trenink-v16";
 
 const ASSETS = [
   "./",
@@ -76,5 +76,34 @@ self.addEventListener("fetch", event => {
         return res;
       })
       .catch(() => caches.match(cacheKey))
+  );
+});
+
+/* Notifikace řízeného tréninku: tlačítka Pauza / Hotovo, dál se pošlou otevřené
+   appce (ta zůstane na pozadí), ťuknutí na samotnou notifikaci appku otevře. */
+self.addEventListener("notificationclick", event => {
+  const n = event.notification;
+  if (n.tag !== "guided") return;
+  const action = event.action || "open";
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (!wins.length) {
+      // appka mezitím skončila → notifikace je stará
+      n.close();
+      if (action === "open") await self.clients.openWindow("./");
+      return;
+    }
+    wins.forEach(c => c.postMessage({ type: "guided-notif", action, sid: n.data && n.data.sid }));
+    if (action === "open") {
+      try { await wins[0].focus(); } catch { /* ignore */ }
+    }
+  })());
+});
+
+self.addEventListener("notificationclose", event => {
+  if (event.notification.tag !== "guided") return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      .then(wins => wins.forEach(c => c.postMessage({ type: "guided-notif", action: "closed" })))
   );
 });
