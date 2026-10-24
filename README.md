@@ -12,6 +12,8 @@ Běží na GitHub Pages, je dělaná primárně na mobil a funguje i offline (PW
 - ▶️ **Řízený trénink (autopilot)** – časovač tě sám provede sériemi i pauzami jako Tabata timer: píská, česky hlásí cviky a série odškrtává za tebe; displej nezhasíná (wake lock); délky sérií jsou v `data.js` (`guided: {work, rest}`)
   - pípání je naplánované dopředu na hodinách Web Audio a neslyšitelný udržovací tón brání uspání stránky, takže na Androidu hraje i se zamčeným displejem nebo v jiné appce
   - na Androidu (Chrome) se hudba (YouTube Music apod.) při pípání a hlášení na chvíli ztiší, ne zastaví (lze vypnout ve „Více“); na iPhonu iOS ztišení ani běh na pozadí webovým appkám nedovolí
+  - na Androidu visí v liště (i na zamčeném displeji) notifikace s odpočtem, cvikem a tlačítky Pauza / Hotovo, dál (lze vypnout ve „Více“)
+  - ◀ funguje jako u přehrávače: jednou = aktuální série/pauza znovu od začátku, dvakrát rychle za sebou = předchozí série
 - 🤸 **Rozcvička** – checklist před tréninkem
 - ⏱ **Odpočet pauzy** – po odškrtnuté sérii v ručním režimu (lze vypnout ve „Více“)
 - 🗓️ **Historie** – všechny dokončené tréninky, možnost je zpětně upravit, smazat, zopakovat nebo změnit datum

@@ -4,13 +4,13 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.10.0";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
 /* ---------------- úložiště ---------------- */
 
-const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true, duck: true };
+const DEFAULT_SETTINGS = { theme: "auto", timer: true, sound: true, voice: true, duck: true, notif: true };
 
 const store = {
   sessions: [],                       // všechny tréninky (aktivní i dokončené)
@@ -733,6 +733,8 @@ function startGuided(sid) {
   soundWork();
   resetCues();
   announceStep();
+  askNotifPermission();
+  updateGuidedNotif(true);
   location.hash = "#/guided/" + sid;
   render();
 }
@@ -740,6 +742,7 @@ function startGuided(sid) {
 function stopGuided() {
   clearCues();
   stopKeepAlive();
+  closeGuidedNotif();
   guided = null;
   if (guidedInterval) { clearInterval(guidedInterval); guidedInterval = null; }
   releaseWake();
@@ -752,6 +755,15 @@ function announceStep() {
   let text = `${st.name}. Série ${st.setIdx + 1} z ${st.setTotal}.`;
   if (st.label) text += ` Cíl ${speakable(st.label)}.`;
   speak(text);
+}
+
+function announcePhase() {
+  if (guided.phase === "rest") {
+    const next = guided.steps[guided.idx + 1];
+    speak(`Pauza. Potom ${next.name}, série ${next.setIdx + 1}.`);
+  } else {
+    announceStep();
+  }
 }
 
 function guidedTick() {
@@ -775,6 +787,7 @@ function guidedTick() {
   }
   if ((location.hash || "").startsWith("#/guided")) updateGuidedDom(remain);
   else renderTimer();
+  updateGuidedNotif();
 }
 
 /* Přechod do další fáze. auto = doběhl odpočet: nová fáze navazuje přesně na konec
@@ -812,17 +825,14 @@ function advanceGuided(auto) {
     speak("Trénink hotový. Dobrá práce!");
     stopKeepAlive();
     releaseWake();
+    updateGuidedNotif(true);
     render();
     return;
   }
   if (!scheduled) { playCue(guided.phase); resetCues(); }
   vibrate(CUE_VIBES[guided.phase]);
-  if (guided.phase === "rest") {
-    const next = guided.steps[guided.idx + 1];
-    speak(`Pauza. Potom ${next.name}, série ${next.setIdx + 1}.`);
-  } else {
-    announceStep();
-  }
+  announcePhase();
+  updateGuidedNotif(true);
   render();
 }
 
@@ -836,6 +846,7 @@ function setGuidedPaused(paused) {
   guided.paused = paused;
   guided.autoPaused = false;
   resetCues();
+  updateGuidedNotif();
 }
 
 function pauseGuided() {
@@ -844,29 +855,37 @@ function pauseGuided() {
   render();
 }
 
-/* Krok zpět: vrátí se na předchozí sérii (zruší její odškrtnutí);
-   na úplném začátku jen restartuje odpočet aktuální série. */
+/* Krok zpět jako u přehrávače: jedno ťuknutí spustí aktuální sérii/pauzu znovu
+   od začátku, druhé hned po něm (do 3 s od začátku) skočí na předchozí sérii
+   a zruší její odškrtnutí. */
+const BACK_PREV_MS = 3000;
+
 function backGuided() {
   if (!guided || guided.finished) return;
   const sess = getSession(guided.sid);
   if (!sess) return;
-  let target;
-  if (guided.phase === "rest") target = guided.idx;        // zpět k právě dojeté sérii
-  else if (guided.idx > 0) target = guided.idx - 1;        // o sérii zpět
-  else target = 0;                                         // začátek → restart odpočtu
-  const st = guided.steps[target];
-  const set = sess.exercises[st.exId].sets[st.setIdx];
-  if (set.done) { set.done = false; set.actual = null; touch(sess); }
-  guided.idx = target;
-  guided.phase = "work";
-  guided.dur = st.work;
-  guided.endsAt = Date.now() + st.work * 1000;
+  const remain = guided.paused ? guided.remainMs : guided.endsAt - Date.now();
+  const elapsed = guided.dur * 1000 - remain;
+  if (elapsed < BACK_PREV_MS && (guided.phase === "rest" || guided.idx > 0)) {
+    // v pauze zpět k právě dojeté sérii, při cvičení o sérii zpět
+    const target = guided.phase === "rest" ? guided.idx : guided.idx - 1;
+    const st = guided.steps[target];
+    const set = sess.exercises[st.exId].sets[st.setIdx];
+    if (set.done) { set.done = false; set.actual = null; touch(sess); }
+    guided.idx = target;
+    guided.phase = "work";
+  }
+  const st = guided.steps[guided.idx];
+  guided.dur = guided.phase === "work" ? st.work : st.restAfter;
+  guided.endsAt = Date.now() + guided.dur * 1000;
   guided.paused = false;
   guided.autoPaused = false;
   guided.lastBeep = null;
-  soundWork();
+  playCue(guided.phase);
+  vibrate(CUE_VIBES[guided.phase]);
   resetCues();
-  announceStep();
+  announcePhase();
+  updateGuidedNotif(true);
   render();
 }
 
@@ -877,6 +896,7 @@ function extendGuided(sec) {
   guided.dur += sec;
   guided.lastBeep = null;
   resetCues();
+  updateGuidedNotif();
   render();
 }
 
@@ -913,6 +933,150 @@ document.addEventListener("visibilitychange", () => {
   guidedTick();   // po návratu hned dorovnat odpočet
 });
 
+/* ---------------- průběh v notifikaci (Android) ---------------- */
+/* Během řízeného tréninku visí v liště (i na zamčeném displeji) notifikace
+   s odpočtem a tlačítky Pauza / Hotovo, dál – trénink je na očích i v jiné appce.
+   Chrome aktualizaci se stejným tagem ukáže potichu (bez pípnutí a vibrace)
+   a dovolí 2 vlastní tlačítka. Ťuknutí na tlačítko obslouží sw.js a pošle
+   ho sem zprávou. iOS tlačítka v notifikacích webových appek neumí. */
+const CAN_NOTIFY = /Android/.test(navigator.userAgent) &&
+  "Notification" in window && "serviceWorker" in navigator;
+const NOTIF_TAG = "guided";
+let notifBusy = false;      // čeká se na předchozí showNotification
+let notifHidden = false;    // notifikace odsunutá → znovu se ukáže při další fázi
+let notifKey = "";          // naposledy zobrazený obsah
+let notifGen = 0;           // zvyšuje se zavřením (zahodí rozpracované zobrazení)
+let notifIcons = null;      // ikony jako data: URL, ať se každou sekundu nestahují
+
+function notifAllowed() {
+  return CAN_NOTIFY && store.settings.notif && Notification.permission === "granted";
+}
+
+// o povolení se dá požádat jen po ťuknutí
+function askNotifPermission() {
+  if (!CAN_NOTIFY || !store.settings.notif || Notification.permission !== "default") return;
+  try {
+    Promise.resolve(Notification.requestPermission())
+      .then(() => { if (Notification.permission === "granted") updateGuidedNotif(true); else render(); })
+      .catch(() => {});
+  } catch { /* ignore */ }
+}
+
+function prepareNotifIcons() {
+  if (notifIcons) return;
+  notifIcons = { icon: "icons/icon-192.png", badge: undefined };
+  try {
+    // malá ikonka do stavové lišty: Android z ní bere jen tvar (bílý kettlebell)
+    const c = document.createElement("canvas");
+    c.width = c.height = 96;
+    const g = c.getContext("2d");
+    g.fillStyle = g.strokeStyle = "#fff";
+    g.lineWidth = 10;
+    g.lineCap = "round";
+    g.beginPath(); g.arc(48, 38, 20, Math.PI, 0); g.stroke();
+    g.beginPath(); g.arc(48, 64, 25, 0, Math.PI * 2); g.fill();
+    notifIcons.badge = c.toDataURL("image/png");
+  } catch { /* ignore */ }
+  fetch("icons/icon-192.png")
+    .then(r => r.blob())
+    .then(b => new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
+    .then(url => { notifIcons.icon = url; })
+    .catch(() => {});
+}
+
+function guidedNotifContent() {
+  if (guided.finished) {
+    return { title: "🎉 Trénink hotový!", body: "Ťukni a trénink ulož.", actions: [] };
+  }
+  const short = id => (PLAN.shortNames || {})[id];
+  const st = guided.steps[guided.idx];
+  const isWork = guided.phase === "work";
+  const next = guided.steps[guided.idx + 1] || null;
+  const remain = guided.paused ? guided.remainMs : Math.max(0, guided.endsAt - Date.now());
+  const s = Math.ceil(remain / 1000);
+  const time = `${Math.floor(s / 60)}:${pad2(s % 60)}`;
+  const icon = guided.paused ? "⏸" : (isWork ? "💪" : "💤");
+  const shown = isWork ? st : next;
+  const title = isWork
+    ? `${icon} ${time} · ${short(st.exId) || st.name} S${st.setIdx + 1}/${st.setTotal}`
+    : `${icon} ${time} · Pauza → ${short(next.exId) || next.name} S${next.setIdx + 1}`;
+  const parts = [isWork ? st.name : `Další: ${next.name}, série ${next.setIdx + 1} z ${next.setTotal}`];
+  if (shown.label) parts.push(`cíl ${shown.label}`);
+  if (isWork) parts.push(next ? `pak ${short(next.exId) || next.name} S${next.setIdx + 1}` : "poslední série 🔥");
+  const ref = isWork ? guided.idx : guided.idx + 1;
+  parts.push(`${ref}/${guided.steps.length} sérií · ≈ ${guidedLeftMin(remain)} min`);
+  return {
+    title,
+    body: parts.join(" · "),
+    actions: [
+      { action: "pause", title: guided.paused ? "▶ Pokračovat" : "⏸ Pauza" },
+      { action: "next", title: isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu" }
+    ]
+  };
+}
+
+/* Zobrazí/aktualizuje notifikaci. force = nová fáze: ukáže se i po odsunutí. */
+function updateGuidedNotif(force) {
+  if (!guided || !notifAllowed() || notifBusy) return;
+  if (notifHidden && !force) return;
+  const c = guidedNotifContent();
+  const key = c.title + "|" + c.body + "|" + c.actions.map(a => a.title).join("|");
+  if (key === notifKey && !force) return;
+  prepareNotifIcons();
+  const gen = notifGen;
+  const sid = guided.sid;
+  notifBusy = true;
+  navigator.serviceWorker.ready
+    .then(reg => reg.showNotification(c.title, {
+      body: c.body,
+      tag: NOTIF_TAG,
+      renotify: false,
+      silent: true,
+      requireInteraction: true,
+      icon: notifIcons.icon,
+      badge: notifIcons.badge,
+      actions: c.actions,
+      data: { sid }
+    }))
+    .then(() => {
+      if (gen !== notifGen) { closeNotifs(); return; }   // trénink mezitím skončil
+      notifKey = key;
+      notifHidden = false;
+    })
+    .catch(() => {})
+    .then(() => { notifBusy = false; });
+}
+
+function closeNotifs() {
+  if (!CAN_NOTIFY) return;
+  navigator.serviceWorker.ready
+    .then(reg => reg.getNotifications({ tag: NOTIF_TAG }))
+    .then(list => list.forEach(n => n.close()))
+    .catch(() => {});
+}
+
+function closeGuidedNotif() {
+  notifGen++;
+  notifKey = "";
+  notifHidden = false;
+  closeNotifs();
+}
+
+// tlačítka z notifikace (přeposílá sw.js)
+if (CAN_NOTIFY) {
+  navigator.serviceWorker.addEventListener("message", e => {
+    const m = e.data || {};
+    if (m.type !== "guided-notif") return;
+    if (m.action === "closed") { notifHidden = true; notifKey = ""; return; }
+    if (!guided || (m.sid && m.sid !== guided.sid)) return;
+    if (m.action === "pause") pauseGuided();
+    else if (m.action === "next") advanceGuided();
+    else if (m.action === "open" && !(location.hash || "").startsWith("#/guided")) location.hash = "#/guided/" + guided.sid;
+  });
+  try { navigator.serviceWorker.startMessages(); } catch { /* ignore */ }
+  closeNotifs();   // po znovuotevření appky je stará notifikace k ničemu
+}
+
 function updateGuidedDom(remainMs) {
   const t = document.getElementById("g-time");
   if (!t) return;
@@ -925,12 +1089,15 @@ function updateGuidedDom(remainMs) {
     ring.style.strokeDashoffset = String(C * (1 - frac));
   }
   const est = document.getElementById("g-est");
-  if (est) {
-    const restRemain = guided.phase === "rest" || guided.idx >= guided.steps.length - 1
-      ? 0 : guided.steps[guided.idx].restAfter;
-    const total = Math.round(remainMs / 1000) + restRemain + guidedTotalSeconds(guided.steps, guided.idx + 1);
-    est.textContent = `zbývá ≈ ${Math.max(1, Math.round(total / 60))} min`;
-  }
+  if (est) est.textContent = `zbývá ≈ ${guidedLeftMin(remainMs)} min`;
+}
+
+// odhad minut do konce tréninku (remainMs = zbytek aktuální fáze)
+function guidedLeftMin(remainMs) {
+  const restAfter = guided.phase === "work" && guided.idx < guided.steps.length - 1
+    ? guided.steps[guided.idx].restAfter : 0;
+  const total = Math.round(remainMs / 1000) + restAfter + guidedTotalSeconds(guided.steps, guided.idx + 1);
+  return Math.max(1, Math.round(total / 60));
 }
 
 /* ---------------- toast ---------------- */
@@ -1582,8 +1749,7 @@ function vGuided(sess) {
   const segs = guided.steps.map((s2, i) =>
     `<i class="seg${i < ref ? " done" : ""}${i === ref ? " cur" : ""}${s2.roundEnd ? " rend" : ""}"></i>`
   ).join("");
-  const estMin = Math.max(1, Math.round((Math.round(remain / 1000) +
-    (isWork && next ? st.restAfter : 0) + guidedTotalSeconds(guided.steps, guided.idx + 1)) / 60));
+  const estMin = guidedLeftMin(remain);
 
   return `<div class="guided">
     <div class="g-phase ${isWork ? "work" : "rest"}">${isWork ? "CVIČÍŠ" : "PAUZA"}</div>
@@ -1607,7 +1773,7 @@ function vGuided(sess) {
       <div class="g-progtxt muted small">${ref}/${guided.steps.length} sérií hotovo · <span id="g-est">zbývá ≈ ${estMin} min</span></div>
     </div>
     <div class="g-controls">
-      <button class="gbtn" data-act="g-back" title="Zpět o sérii">◀</button>
+      <button class="gbtn" data-act="g-back" title="Znovu od začátku, 2× = předchozí série">◀</button>
       <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
       <button class="gbtn main" data-act="g-next">${isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu"}</button>
       <button class="gbtn" data-act="g-plus">+15 s</button>
@@ -1870,6 +2036,11 @@ function vMore() {
         <div class="lbl">🎵 Ztišit hudbu při pípání a hlášení</div>
         <div class="switch ${store.settings.duck ? "on" : ""}"></div>
       </div>` : ""}
+      ${CAN_NOTIFY ? `<div class="switchrow" data-act="toggle-notif">
+        <div class="lbl">📲 Průběh tréninku v notifikaci (odpočet a tlačítka)</div>
+        <div class="switch ${store.settings.notif ? "on" : ""}"></div>
+      </div>
+      ${store.settings.notif && Notification.permission === "denied" ? `<p class="hint small" style="margin:8px 0 0">⚠️ Notifikace má prohlížeč pro tuhle stránku zakázané. Povol je v nastavení webu (ikonka vedle adresy) nebo v nastavení Androidu u Chromu.</p>` : ""}` : ""}
       ${IS_IOS ? `<p class="hint small" style="margin:8px 0 0">📱 iPhone: pípání ztlumí přepínač tichého režimu a se zamčeným displejem iOS webové appky uspí – během řízeného tréninku nech appku otevřenou a displej zapnutý.</p>` : ""}
     </div>
 
@@ -1980,6 +2151,18 @@ document.addEventListener("click", e => {
       if (store.settings.sound) { ensureAudio(); soundTick(); }
       resetCues();
       saveStore();
+      render();
+      break;
+    }
+    case "toggle-notif": {
+      store.settings.notif = !store.settings.notif;
+      saveStore();
+      if (store.settings.notif) {
+        askNotifPermission();
+        updateGuidedNotif(true);
+      } else {
+        closeGuidedNotif();
+      }
       render();
       break;
     }
