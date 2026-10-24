@@ -10,6 +10,8 @@ Běží na GitHub Pages, je dělaná primárně na mobil a funguje i offline (PW
 - 📋 **Plán po dnech** – tréninky A1, B, A2 s cíli pro každý z 12 týdnů, supersérie, pauzy a poznámky z tabulky
 - ✅ **Trackování** – odškrtávání sérií jedním ťuknutím, úprava skutečných hodnot (opakování/kg), poznámky ke cviku i tréninku
 - ▶️ **Řízený trénink (autopilot)** – časovač tě sám provede sériemi i pauzami jako Tabata timer: píská, česky hlásí cviky a série odškrtává za tebe; displej nezhasíná (wake lock); délky sérií jsou v `data.js` (`guided: {work, rest}`)
+  - pípání je naplánované dopředu na hodinách Web Audio a neslyšitelný udržovací tón brání uspání stránky, takže na Androidu hraje i se zamčeným displejem nebo v jiné appce
+  - na Androidu (Chrome) se hudba (YouTube Music apod.) při pípání a hlášení na chvíli ztiší, ne zastaví (lze vypnout ve „Více“); na iPhonu iOS ztišení ani běh na pozadí webovým appkám nedovolí
 - 🤸 **Rozcvička** – checklist před tréninkem
 - ⏱ **Odpočet pauzy** – po odškrtnuté sérii v ručním režimu (lze vypnout ve „Více“)
 - 🗓️ **Historie** – všechny dokončené tréninky, možnost je zpětně upravit, smazat, zopakovat nebo změnit datum
