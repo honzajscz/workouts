@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.10.3";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -1009,7 +1009,7 @@ function guidedNotifContent() {
     title,
     body: parts.join(" · "),
     actions: [
-      { action: "pause", title: guided.paused ? "▶ Pokračovat" : "⏸ Pauza" },
+      { action: "pause", title: guided.paused ? "▶ Pokračovat" : "⏸ Pozastavit" },
       { action: "next", title: isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu" }
     ]
   };
@@ -1099,6 +1099,15 @@ function guidedLeftMin(remainMs) {
   const total = Math.round(remainMs / 1000) + restAfter + guidedTotalSeconds(guided.steps, guided.idx + 1);
   return Math.max(1, Math.round(total / 60));
 }
+
+/* ---------------- ikony ovládání ---------------- */
+/* SVG místo znaků ◀ ▶: vypadají všude stejně a „zpět“ se nedá splést s „přehrát“. */
+const ICONS = {
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="2.8" height="14" rx="1.2"/><path d="M19.5 6.2v11.6c0 .9-1 1.4-1.7.9l-8.4-5.8a1.1 1.1 0 0 1 0-1.8l8.4-5.8c.7-.5 1.7 0 1.7.9z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.3"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.3"/></svg>',
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 5.3v13.4c0 .9 1 1.4 1.7.9l10-6.7a1.1 1.1 0 0 0 0-1.8l-10-6.7c-.7-.5-1.7 0-1.7.9z"/></svg>',
+  list: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="2.6" rx="1.3"/><rect x="4" y="10.7" width="16" height="2.6" rx="1.3"/><rect x="4" y="15.9" width="16" height="2.6" rx="1.3"/></svg>'
+};
 
 /* ---------------- toast ---------------- */
 
@@ -1752,7 +1761,7 @@ function vGuided(sess) {
   const estMin = guidedLeftMin(remain);
 
   return `<div class="guided">
-    <div class="g-phase ${isWork ? "work" : "rest"}">${isWork ? "CVIČÍŠ" : "PAUZA"}</div>
+    <div class="g-phase ${guided.paused ? "held" : (isWork ? "work" : "rest")}">${guided.paused ? "POZASTAVENO" : (isWork ? "CVIČÍŠ" : "PAUZA")}</div>
     <div class="g-ring">
       <svg viewBox="0 0 240 240">
         <circle class="g-ring-bg" cx="120" cy="120" r="100"></circle>
@@ -1773,10 +1782,10 @@ function vGuided(sess) {
       <div class="g-progtxt muted small">${ref}/${guided.steps.length} sérií hotovo · <span id="g-est">zbývá ≈ ${estMin} min</span></div>
     </div>
     <div class="g-controls">
-      <button class="gbtn" data-act="g-back" title="Znovu od začátku, 2× = předchozí série">◀</button>
-      <button class="gbtn" data-act="g-pause">${guided.paused ? "▶" : "⏸"}</button>
+      <button class="gbtn ico" data-act="g-back" title="Znovu od začátku, 2× = předchozí série">${ICONS.back}<span>Zpět</span></button>
+      <button class="gbtn ico wide${guided.paused ? " on" : ""}" data-act="g-pause">${guided.paused ? ICONS.play : ICONS.pause}<span>${guided.paused ? "Pokračovat" : "Pozastavit"}</span></button>
       <button class="gbtn main" data-act="g-next">${isWork ? "✓ Hotovo, dál" : "» Přeskočit pauzu"}</button>
-      <button class="gbtn" data-act="g-plus">+15 s</button>
+      <button class="gbtn ico" data-act="g-plus"><b>+15</b><span>sekund</span></button>
     </div>
     <div class="g-meta">
       <button class="linkbtn" data-act="toggle-voice">${store.settings.voice ? "🔊 hlas" : "🔇 hlas"}</button>
@@ -2208,16 +2217,21 @@ document.addEventListener("click", e => {
     case "wipe": wipeAll(); break;
     case "refresh-app": {
       showToast("Obnovuji aplikaci…");
+      // prohlížeč někdy na kontrolu aktualizace vůbec neodpoví → nečekat donekonečna
+      const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(r, ms))]);
       (async () => {
         try {
           if ("serviceWorker" in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg) await reg.update();
+            const reg = await within(navigator.serviceWorker.getRegistration(), 3000);
+            if (reg) await within(reg.update(), 4000);
           }
+          // stáhnout appku znovu mimo mezipaměť prohlížeče (funguje i se starým service workerem)
+          await within(Promise.all(["./", "index.html", "app.js", "data.js", "figures.js", "styles.css"]
+            .map(u => fetch(u, { cache: "reload" }).catch(() => {}))), 8000);
           if (window.caches) {
             // jen vlastní cache: na stejné doméně můžou běžet i jiné appky
-            const keys = await caches.keys();
-            for (const k of keys) if (k.startsWith("trenink-")) await caches.delete(k);
+            const keys = await within(caches.keys(), 3000) || [];
+            for (const k of keys) if (k.startsWith("trenink-")) await within(caches.delete(k), 3000);
           }
         } catch { /* ignore */ }
         location.reload();
@@ -2576,9 +2590,9 @@ function vYogaRun(y) {
       <div class="g-progtxt muted small">${done}/${total} pozic hotovo</div>
     </div>
     <div class="g-controls">
-      <button class="gbtn" data-act="yoga-back" data-sid="${y.id}" title="Zpět">◀</button>
+      <button class="gbtn ico" data-act="yoga-back" data-sid="${y.id}" title="Zpět">${ICONS.back}<span>Zpět</span></button>
       <button class="gbtn main" data-act="yoga-next" data-sid="${y.id}">${idx >= total - 1 ? "✓ Dokončit" : "✓ Hotovo, dál"}</button>
-      <button class="gbtn" data-act="yoga-list" title="Seznam pozic">☰</button>
+      <button class="gbtn ico" data-act="yoga-list" title="Seznam pozic">${ICONS.list}<span>Seznam</span></button>
     </div>
     <div class="g-meta">
       <button class="linkbtn" data-act="toggle-voice">${store.settings.voice ? "🔊 hlas" : "🔇 hlas"}</button>
