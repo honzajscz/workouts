@@ -4,7 +4,7 @@
    ========================================================= */
 "use strict";
 
-const APP_VERSION = "1.10.1";
+const APP_VERSION = "1.10.2";
 const STORAGE_KEY = "trenink-tracker.v1";
 const EXPORT_APP_ID = "trenink-tracker";
 
@@ -2208,19 +2208,21 @@ document.addEventListener("click", e => {
     case "wipe": wipeAll(); break;
     case "refresh-app": {
       showToast("Obnovuji aplikaci…");
+      // prohlížeč někdy na kontrolu aktualizace vůbec neodpoví → nečekat donekonečna
+      const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(r, ms))]);
       (async () => {
         try {
           if ("serviceWorker" in navigator) {
-            const reg = await navigator.serviceWorker.getRegistration();
-            if (reg) await reg.update();
+            const reg = await within(navigator.serviceWorker.getRegistration(), 3000);
+            if (reg) await within(reg.update(), 4000);
           }
           // stáhnout appku znovu mimo mezipaměť prohlížeče (funguje i se starým service workerem)
-          await Promise.all(["./", "index.html", "app.js", "data.js", "figures.js", "styles.css"]
-            .map(u => fetch(u, { cache: "reload" }).catch(() => {})));
+          await within(Promise.all(["./", "index.html", "app.js", "data.js", "figures.js", "styles.css"]
+            .map(u => fetch(u, { cache: "reload" }).catch(() => {}))), 8000);
           if (window.caches) {
             // jen vlastní cache: na stejné doméně můžou běžet i jiné appky
-            const keys = await caches.keys();
-            for (const k of keys) if (k.startsWith("trenink-")) await caches.delete(k);
+            const keys = await within(caches.keys(), 3000) || [];
+            for (const k of keys) if (k.startsWith("trenink-")) await within(caches.delete(k), 3000);
           }
         } catch { /* ignore */ }
         location.reload();
