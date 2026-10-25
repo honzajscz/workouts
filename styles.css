@@ -751,6 +751,7 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 }
 .g-phase.work { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
 .g-phase.rest { background: color-mix(in srgb, var(--day-A2) 20%, transparent); color: var(--day-A2); }
+.g-phase.held { background: color-mix(in srgb, var(--muted) 22%, transparent); color: var(--text); }
 
 .g-ring {
   position: relative;
@@ -821,6 +822,25 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   -webkit-tap-highlight-color: transparent;
 }
 .gbtn:active { filter: brightness(1.15); }
+.gbtn.ico {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 62px;
+  padding: 7px 6px;
+}
+.gbtn.ico svg { width: 22px; height: 22px; fill: currentColor; }
+.gbtn.ico b { font-size: 18px; line-height: 22px; }
+.gbtn.ico.wide { min-width: 78px; }   /* Pozastavit / Pokračovat bez poskakování */
+.gbtn.ico span { font-size: 11px; font-weight: 700; color: var(--muted); }
+.gbtn.ico.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+}
+.gbtn.ico.on span { color: var(--accent); }
 .gbtn.main {
   flex: 1;
   max-width: 250px;

@@ -4,7 +4,7 @@
    GitHub Pages posílá soubory s max-age=600, proto se mezipaměť prohlížeče
    obchází (jinak by se nová verze projevila až po 10 minutách).
    Při změně souborů zvyš číslo verze, ať se stará cache uklidí. */
-const CACHE = "trenink-v18";
+const CACHE = "trenink-v19";
 
 const ASSETS = [
   "./",
